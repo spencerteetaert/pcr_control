@@ -1,0 +1,4 @@
+controller_params:
+  num_links: 2
+  link_lengths: [3, 3]
+  link_base_points: [[-1, -1], [1, 1]]
