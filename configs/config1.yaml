@@ -1,4 +1,5 @@
 controller_params:
   num_links: 2
-  link_lengths: [3, 3]
-  link_base_points: [[-1, -1], [1, 1]]
+  link_lengths: [0.6, 0.6]
+  link_base_points: [[-0.3, -0.1], [0.3, 0.1]]
+  link_exclusion_radii: [0.1, 0.1]

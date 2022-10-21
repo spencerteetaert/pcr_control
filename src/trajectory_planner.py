@@ -21,15 +21,21 @@ class Node:
 
 def astar(map, start, end, noise_map=None, visualize=False):
     if visualize:
-        disp_map = np.copy(noise_map)
+        disp_map = np.copy(map)
         disp_map = np.stack([disp_map, disp_map, disp_map]).astype(np.uint8)
         disp_map = np.transpose(disp_map, (1, 2, 0))
     START = time.time() 
+
+    
 
     start_node = Node(None, start)
     start_node.g = start_node.h = start_node.f = 0
     end_node = Node(None, end)
     end_node.g = end_node.h = end_node.f = 0
+
+    if map[end_node.position[1]][end_node.position[0]] != 255:
+        print("Requested position is unreachable")
+        return []
 
     open_list = []
     closed_list = []
@@ -141,7 +147,7 @@ def generate_perlin_noise_2d(shape, res):
 class Profile:
     def __init__(self, index, start_time, L, C_smoothness=4):
         # TODO ? : Add max jerk values, add synchronization between motors 
-        self.v_max = 1 # max velocity of motors, m/s in tendon displacement 
+        self.v_max = 3 # max velocity of motors, m/s in tendon displacement 
         self.a_max = 5 # max acceleration of motors, m/s**2 in tendon displacement 
         self.d_max = 5 # max deacceleration of motors, m/s**2 in tendon displacement 
         assert C_smoothness > 1 and C_smoothness < 12, "C_smoothness only support between 2 and 11"
@@ -289,10 +295,86 @@ class TrajectoryPlanner:
     def __init__(self, C_smoothness=4):
         assert C_smoothness > 1 and C_smoothness < 12, "C_smoothness only support between 2 and 11"
         self.C_smoothness = 4
-        self.blend = True
-        # self.blend = False
+        # self.blend = True
+        self.blend = False
+
+    def gen_trajectory(self, PCR_controller, start_pt, end_pt, dt=0.001, add_noise=False, verbose=True):
+        '''
+        Given map centered at 0m,0m, a gridscale, and starting/ending points, generates a smooth 
+        profile for motor velocities. 
+
+        Args:
+            PCR_controller: PCR_controller object for robot
+            start_pt (tuple): starting point (m) 
+            end_pt (tuple): ending point (m) 
+            dt (float): time between returned velocity commands (s) 
+            add_noise (bool): whether to add positional noise to the trajectory 
+
+        Returns: 
+            nx4 list containing discrete velocity commands for each motor, each dt time apart
+        '''
+        costmap = PCR_controller.costmap
+        start_pt_px = (np.array(start_pt)*PCR_controller.scale + np.array(costmap.shape) / 2).astype(int)
+        end_pt_px = (np.array(end_pt)*PCR_controller.scale + np.array(costmap.shape) / 2).astype(int)
+
+        # Path planning testing 
+        if add_noise:
+            noise_map = generate_perlin_noise_2d(costmap.shape, (10, 10))*5
+            noise_map = np.clip(noise_map, 0, 1)*255
+            path = astar(costmap, start_pt_px, end_pt_px, noise_map=noise_map, visualize=add_noise)
+        else:
+            path = astar(costmap, start_pt_px, end_pt_px, visualize=verbose)
+
+
+        if verbose:
+            disp_image = np.zeros((*costmap.shape, 3)).astype(np.uint8)
+            disp_image[...,0] = costmap
+            disp_image[...,1] = costmap
+            disp_image[...,2] = costmap
+
+            for item in path:  
+                disp_image[item[1], item[0]] = [0, 255, 0]
+
+            cv2.imshow("Generated path", cv2.resize(disp_image, (500, 500)))
+            cv2.waitKey(0)
+
+        '''
+        Path is nx2 points on map 
+        1) scale points to physical space 
+        2) for each point:
+            i) solve for K
+            ii) solve for tendon displacements 
+        3) generate and return smooth tendon displacement profile 
+        '''
+
+        path = [(item - np.array(costmap.shape) / 2) / PCR_controller.scale for item in path]
+        qs = [] # rad
+        for item in path: 
+            if not PCR_controller.update_end_point(item):
+                print("Unable to set link to point", item)
+            
+            print(np.array([link.dq for link in PCR_controller.links]).flatten().shape)
+            qs += [np.array([link.dq for link in PCR_controller.links]).flatten().tolist()]
+
+        print(np.array(qs), np.array(qs).shape)
+        smoothed_qs = [self.gen_smooth_trajectory(np.array(qs)[:,i], 1/dt) for i in range(len(qs[0]))]
+
+        return smoothed_qs
+
+
+
 
     def gen_smooth_trajectory(self, pos_values, command_freq, verbose = True):
+        '''Given a series of relative position commands, generates a Cn smooth trajectory linking each point.
+
+        Args: 
+            pos_values (iterable): position values to fit path to 
+            command_freq (int): frequency for return values to be executed at (hz) 
+        
+        Returns:
+            list of smoothly interpolated values fit to pos_values input to be executed at command_freq
+        
+        '''
         START = time.time()
         profiles = []
         profiles += [Profile(0, 0, pos_values[0], self.C_smoothness)]
@@ -356,8 +438,11 @@ class TrajectoryPlanner:
 if __name__=='__main__':
     ## Trajectorty planning testing 
     planner = TrajectoryPlanner()
-    planner.gen_smooth_trajectory([1, -1, 2, -3.5, 0.8, -0.7], 1000)
+    planner.gen_smooth_trajectory([1, -1.5, 2, -3.5, 0.8, -0.7], 1000)
     # planner.gen_smooth_trajectory([1, -1, 0.5], 3000)
+
+    pass
+
 
     # # Profile mechanic testing 
     # p1 = Profile(0, 0, 1)
