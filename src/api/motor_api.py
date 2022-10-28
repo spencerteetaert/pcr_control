@@ -3,6 +3,11 @@
 https://open-dynamic-robot-initiative.github.io/udriver_firmware/can/can_connection.html 
 
 https://github.com/open-dynamic-robot-initiative/python_blmc
+
+TODO: 
+    - Double check velocity units 
+    - Tune PID for robot 
+    - remove motor 4 override 
 """
 
 import sys
@@ -19,6 +24,7 @@ from blmc.controllers import VelocityController
 from blmc.can_helper import start_system, send_mtr_current, stop_system
 
 BITRATE = 1e6
+GEAR_RATIO = 4
 Kp = 3
 Kd = 0
 Ki = 5
@@ -48,13 +54,13 @@ class MotorController:
         self.msg_handlers[0].set_id_handler(ArbitrationIds.status, self.mtr_datas[0].set_status)
         self.msg_handlers[0].set_id_handler(ArbitrationIds.current, self.mtr_datas[0].set_current)
         self.msg_handlers[0].set_id_handler(ArbitrationIds.position, self.mtr_datas[0].set_position)
-        self.msg_handlers[0].set_id_handler(ArbitrationIds.velocity, partial(self.on_velocity_msg, motor_idx=[0, 1]))
+        self.msg_handlers[0].set_id_handler(ArbitrationIds.velocity, partial(self._on_velocity_msg, motor_idx=[0, 1]))
         self.msg_handlers[0].set_id_handler(ArbitrationIds.adc6, self.adcs[0].set_values)
 
         self.msg_handlers[1].set_id_handler(ArbitrationIds.status, self.mtr_datas[1].set_status)
         self.msg_handlers[1].set_id_handler(ArbitrationIds.current, self.mtr_datas[1].set_current)
         self.msg_handlers[1].set_id_handler(ArbitrationIds.position, self.mtr_datas[1].set_position)
-        self.msg_handlers[1].set_id_handler(ArbitrationIds.velocity, partial(self.on_velocity_msg, motor_idx=[2, 3]))
+        self.msg_handlers[1].set_id_handler(ArbitrationIds.velocity, partial(self._on_velocity_msg, motor_idx=[2, 3]))
         self.msg_handlers[1].set_id_handler(ArbitrationIds.adc6, self.adcs[1].set_values)
 
         self.handler0 = CanHandler(0, self.busses[0], self.msg_handlers[0])
@@ -70,6 +76,10 @@ class MotorController:
         signal.signal(signal.SIGINT, sigint_handler)
 
     def enable(self):
+        '''
+        Enables microcontrollers and starts canbus message handling threads
+        '''
+        print("Enabling motors...")
         start_system(self.busses[0], self.mtr_datas[0], False)
         start_system(self.busses[1], self.mtr_datas[1], False)
 
@@ -79,7 +89,10 @@ class MotorController:
         self.enabled = True
 
     def disable(self):
-        print("Killing motors...")
+        '''
+        Disables microcontrollers and stops canbus message handling threads
+        '''
+        print("Disabling motors...")
         stop_system(self.busses[0])
         stop_system(self.busses[1])
 
@@ -91,21 +104,21 @@ class MotorController:
 
     def set_velocities(self, vels):
         '''
-        Set reference velocities for each of 4 motors (unknown units)
+        Sets reference velocities for each of 4 motors
 
         Args: 
-            vels (list): 4 motor velocity values
+            vels (list): 4 motor velocity values (rps)
         '''
         if self.enabled:
-            vels[3] = 0 # MANUAL OVERRIDE SO I DONT ACCIDENTALLY TURN THIS ON
-            self.vels = vels
+            self.vels[0] = vels[0] / GEAR_RATIO
+            self.vels[1] = vels[1] / GEAR_RATIO
+            self.vels[2] = vels[2] / GEAR_RATIO
+            self.vels[3] = 0 / GEAR_RATIO # MANUAL OVERRIDE SO I DONT ACCIDENTALLY TURN THIS ON
         else:
             raise AssertionError("Motor is not enabled.")
 
-    def on_velocity_msg(self, msg, motor_idx):
+    def _on_velocity_msg(self, msg, motor_idx):
         board_idx = motor_idx[0] // 2
-
-        # print(board_idx, motor_idx, msg)
 
         self.mtr_datas[board_idx].set_velocity(msg)
 
@@ -151,22 +164,8 @@ if __name__ == "__main__":
     controller.enable()
 
     print("Starting trajectory")
-    controller.set_velocities([0.1, 0, 0, 0])
-    time.sleep(3)
+    controller.set_velocities([1, 2, 0.2, 0])
+    time.sleep(30)
 
-    controller.set_velocities([0.1, 0.3, 0, 0])
-    time.sleep(3)
-
-    controller.set_velocities([0.1, 0.3, 0.7, 0])
-    time.sleep(3)
-
-    controller.set_velocities([0.1, 1, 0.7, 0])
-    time.sleep(3)
-
-    controller.set_velocities([2, 1, 0.7, 0])
-    time.sleep(3)
-
-    controller.set_velocities([0.5, 0.5, 0.5, 0])
-    time.sleep(3)
 
     controller.disable()
