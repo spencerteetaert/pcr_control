@@ -1,143 +1,144 @@
 #!/usr/bin/env python
 """
 https://open-dynamic-robot-initiative.github.io/udriver_firmware/can/can_connection.html 
+
+https://github.com/open-dynamic-robot-initiative/python_blmc
 """
 
+import sys
+import threading
+from functools import partial
 import time
-import can
+import signal
+
 import can
 can.rc['interface'] = 'socketcan'
-# can.rc['channel'] = 'can0'
-can.rc['bitrate'] = 1000000
-# can.util.load_config()
-from can.interface import Bus
 
-# bus = Bus('can0', interface='socketcan', bitrate=1000000)
-import signal
-import sys
-import traceback
-from blmc.motor_data import MotorData, AdcResult, MessageHandler, ArbitrationIds, StampedValue
+from blmc.motor_data import MotorData, AdcResult, MessageHandler, ArbitrationIds
 from blmc.controllers import VelocityController
-from blmc.can_helper import start_system, send_mtr_current, send_command, Command
-
-'''
-TODO:
-- get motor speed feedback, currently none 
-- get slow running control working 
-- figure out what adcresult is and how to work with it 
-- extend message handling to all 4 motors
-
-
-
-class Command:
-    enable_sys = 1
-    enable_mtr1 = 2
-    enable_mtr2 = 3
-    enable_vspring1 = 4
-    enable_vspring2 = 5
-    send_current = 12
-    send_position = 13
-    send_velocity = 14
-    send_adc6 = 15
-    send_all = 20
-'''
-
+from blmc.can_helper import start_system, send_mtr_current, stop_system
 
 BITRATE = 1e6
-Kp = 1
-Ki = 1
+Kp = 3
+Kd = 0
+Ki = 5
+
 MAX_SPEED = 2
 
 
 class MotorController:
     def __init__(self):
-        self.mtr_data0 = MotorData()
-        self.mtr_data1 = MotorData()
-        self.adc0 = AdcResult()
-        self.adc1 = AdcResult()
-        self.bus0 = can.interface.Bus('can0', bitrate=BITRATE)
-        self.bus1 = can.interface.Bus('can1', bitrate=BITRATE)
+        self.mtr_datas = [MotorData(), MotorData()]
+        self.adcs = [AdcResult(), AdcResult()]
+        self.busses = [can.interface.Bus('can0', bitrate=BITRATE), can.interface.Bus('can1', bitrate=BITRATE)]
+        self.vels = [0,0,0,0]
+        self.enabled = False
+
+        print("Setup controller with Kp = {}, Ki = {} Kd = {}".format(Kp, Ki, Kd))
+        print("Max speed: {}".format(MAX_SPEED))
+        self.vctrl = [
+            VelocityController(self.busses[0], Kp, Ki, Kd), 
+            VelocityController(self.busses[0], Kp, Ki, Kd), 
+            VelocityController(self.busses[1], Kp, Ki, Kd), 
+            VelocityController(self.busses[1], Kp, Ki, Kd)
+        ]
+
+        self.msg_handlers = [MessageHandler(), MessageHandler()]
+
+        self.msg_handlers[0].set_id_handler(ArbitrationIds.status, self.mtr_datas[0].set_status)
+        self.msg_handlers[0].set_id_handler(ArbitrationIds.current, self.mtr_datas[0].set_current)
+        self.msg_handlers[0].set_id_handler(ArbitrationIds.position, self.mtr_datas[0].set_position)
+        self.msg_handlers[0].set_id_handler(ArbitrationIds.velocity, partial(self.on_velocity_msg, motor_idx=[0, 1]))
+        self.msg_handlers[0].set_id_handler(ArbitrationIds.adc6, self.adcs[0].set_values)
+
+        self.msg_handlers[1].set_id_handler(ArbitrationIds.status, self.mtr_datas[1].set_status)
+        self.msg_handlers[1].set_id_handler(ArbitrationIds.current, self.mtr_datas[1].set_current)
+        self.msg_handlers[1].set_id_handler(ArbitrationIds.position, self.mtr_datas[1].set_position)
+        self.msg_handlers[1].set_id_handler(ArbitrationIds.velocity, partial(self.on_velocity_msg, motor_idx=[2, 3]))
+        self.msg_handlers[1].set_id_handler(ArbitrationIds.adc6, self.adcs[1].set_values)
+
+        self.handler0 = CanHandler(0, self.busses[0], self.msg_handlers[0])
+        self.handler1 = CanHandler(1, self.busses[1], self.msg_handlers[1])
+        self.t0 = threading.Thread(target=self.handler0.loop)
+        self.t1 = threading.Thread(target=self.handler1.loop)
 
         # setup sigint handler to disable motor on CTRL+C
         def sigint_handler(signal, frame):
             print("Stop motor and shut down.")
-            self.disable()
+            controller.disable()
             sys.exit(0)
         signal.signal(signal.SIGINT, sigint_handler)
-        signal.signal(signal.SIGINT, sigint_handler)
-
-        print("Setup controller with Kp = {}, Ki = {}".format(Kp, Ki))
-        print("Max speed: {}".format(MAX_SPEED))
-        self.vctrl0 = VelocityController(self.bus0, Kp, Ki, 0)
-        self.vctrl1 = VelocityController(self.bus0, Kp, Ki, 0)
-        self.vctrl2 = VelocityController(self.bus1, Kp, Ki, 0)
-        self.vctrl3 = VelocityController(self.bus1, Kp, Ki, 0)
-
-        self.msg_handler0 = MessageHandler()
-        self.msg_handler0.set_id_handler(ArbitrationIds.status, self.mtr_data0.set_status)
-        self.msg_handler0.set_id_handler(ArbitrationIds.current, self.mtr_data0.set_current)
-        # self.msg_handler0.set_id_handler(ArbitrationIds.position, self.mtr_data0.set_position)
-        # self.msg_handler0.set_id_handler(ArbitrationIds.velocity, on_velocity_msg)
-        self.msg_handler0.set_id_handler(ArbitrationIds.adc6, self.temp)
-
-
-        self.enable()
-
-    def temp(self, msg):
-        print("MESSAGE", msg)
 
     def enable(self):
-        # start_system(self.bus0, self.mtr_data0)
-        # start_system(self.bus1, self.mtr_data1)
-        print("Enable system...")
-        send_command(self.bus0, Command.enable_sys, 1)
-        send_command(self.bus1, Command.enable_sys, 1)
+        start_system(self.busses[0], self.mtr_datas[0], False)
+        start_system(self.busses[1], self.mtr_datas[1], False)
 
-        print("Enable motor...")
-        send_mtr_current(self.bus0, 0, 0)  # start with zero
-        send_mtr_current(self.bus0, 0, 0)  # start with zero
-        send_command(self.bus0, Command.enable_mtr1, 1)
-        send_command(self.bus0, Command.enable_mtr2, 1)
-        send_command(self.bus1, Command.enable_mtr1, 1)
-        send_command(self.bus1, Command.enable_mtr2, 1)
+        self.t0.start()
+        self.t1.start()
+
+        self.enabled = True
 
     def disable(self):
         print("Killing motors...")
-        send_command(self.bus0, Command.enable_sys, 0)
-        send_command(self.bus1, Command.enable_sys, 0)
-        send_mtr_current(self.bus0, 0, 0)  # start with zero
-        send_mtr_current(self.bus1, 0, 0)  # start with zero
-        send_command(self.bus0, Command.enable_mtr1, 0)
-        send_command(self.bus0, Command.enable_mtr2, 0)
-        send_command(self.bus1, Command.enable_mtr1, 0)
-        send_command(self.bus1, Command.enable_mtr2, 0)
+        stop_system(self.busses[0])
+        stop_system(self.busses[1])
 
+        self.handler0.kill = True
+        self.handler1.kill = True
+
+        self.t0.join()
+        self.t1.join()
 
     def set_velocities(self, vels):
-        vels[3] = 0 # MANUAL OVERRIDE SO I DONT ACCIDENTALLY TURN THIS ON
-        send_mtr_current(self.bus0, *vels[:2])
-        send_mtr_current(self.bus1, *vels[2:])
+        '''
+        Set reference velocities for each of 4 motors (unknown units)
 
-    def on_velocity_msg(self, vels):
+        Args: 
+            vels (list): 4 motor velocity values
+        '''
+        if self.enabled:
+            vels[3] = 0 # MANUAL OVERRIDE SO I DONT ACCIDENTALLY TURN THIS ON
+            self.vels = vels
+        else:
+            raise AssertionError("Motor is not enabled.")
+
+    def on_velocity_msg(self, msg, motor_idx):
+        board_idx = motor_idx[0] // 2
+
+        # print(board_idx, motor_idx, msg)
+
+        self.mtr_datas[board_idx].set_velocity(msg)
 
         # emergency break
-        if self.mtr_data0.mtr1.velocity.value > MAX_SPEED * 3 or self.mtr_data0.mtr2.velocity.value > MAX_SPEED * 3:
+        if self.mtr_datas[board_idx].mtr1.velocity.value > MAX_SPEED * 3 or self.mtr_datas[board_idx].mtr2.velocity.value > MAX_SPEED * 3:
             self.disable()
             print("Too fast! EMERGENCY BREAK!")
             sys.exit(0)
 
-        # if self.mtr_data0.status.mtr1_ready and self.mtr_data0.status.mtr2_ready:
-        self.vctrl0.update_data(self.mtr_data0.mtr1)
-        self.vctrl1.update_data(self.mtr_data0.mtr2)
+        if self.mtr_datas[board_idx].status.mtr1_ready and self.mtr_datas[board_idx].status.mtr2_ready:
+            self.vctrl[motor_idx[0]].update_data(self.mtr_datas[board_idx].mtr1)
+            self.vctrl[motor_idx[1]].update_data(self.mtr_datas[board_idx].mtr2)
+            
+            self.vctrl[motor_idx[0]].run(self.vels[motor_idx[0]])
+            self.vctrl[motor_idx[1]].run(self.vels[motor_idx[1]])
 
-        self.vctrl0.run(MAX_SPEED * vels[0])
-        self.vctrl1.run(MAX_SPEED * vels[1])
+            send_mtr_current(self.busses[board_idx], self.vctrl[motor_idx[0]].iqref, self.vctrl[motor_idx[1]].iqref)
+        else:
+            send_mtr_current(self.busses[board_idx], 0, 0)
 
-        send_mtr_current(self.bus0, self.vctrl0.iqref, self.vctrl1.iqref)
-        # else:
-        #     send_mtr_current(self.bus0, 0, 0)
-        print()
+class CanHandler:
+    def __init__(self, handlerID, bus, msg_handler):
+        self.bus = bus
+        self.msg_handler = msg_handler
+        self.handlerID = handlerID
+        self.kill = False
 
+    def loop(self):
+        for msg in self.bus:
+            if self.kill:
+                break
+
+            self.msg_handler.handle_msg(msg)
 
 if __name__ == "__main__":
     controller = MotorController()
@@ -147,42 +148,25 @@ if __name__ == "__main__":
     M0     M1 
     M2     M3
     '''
-    start = time.time()
+    controller.enable()
 
-    controller.mtr_data0.mtr1.velocity = StampedValue(0, time.time())
-    controller.mtr_data0.mtr2.velocity = StampedValue(0, time.time())
+    print("Starting trajectory")
+    controller.set_velocities([0.1, 0, 0, 0])
+    time.sleep(3)
 
-    timestamp = time.time()
-    m0_vel = 0
-    m1_vel = 0
+    controller.set_velocities([0.1, 0.3, 0, 0])
+    time.sleep(3)
 
-    # wait for messages and update data
-    while time.time() - start < 20:
-        dt = time.time() - timestamp
-        timestamp = time.time()
-        m0_vel += dt * controller.vctrl0.iqref
-        m1_vel += dt * controller.vctrl1.iqref
+    controller.set_velocities([0.1, 0.3, 0.7, 0])
+    time.sleep(3)
 
-        controller.mtr_data0.mtr1.velocity = StampedValue(m0_vel, timestamp)
-        controller.mtr_data0.mtr2.velocity = StampedValue(m1_vel, timestamp)
+    controller.set_velocities([0.1, 1, 0.7, 0])
+    time.sleep(3)
 
-        controller.on_velocity_msg([0.1, 0, 0, 0])
+    controller.set_velocities([2, 1, 0.7, 0])
+    time.sleep(3)
 
-        time.sleep(0.001)
+    controller.set_velocities([0.5, 0.5, 0.5, 0])
+    time.sleep(3)
 
-
-    # for msg in controller.bus1:
-        
-    #     # try:
-    #     print(msg)
-    #     controller.msg_handler0.handle_msg(msg)
-
-    #     if time.time() - start > 3:
-    #         break
-    #     # except Exception:
-    #     #     print("\n\n=========== ERROR ============")
-    #     #     print(traceback.format_exc())
-    #     #     send_msg(bus, msg_disable_system)
-    #     #     break
-    #     # 
     controller.disable()
