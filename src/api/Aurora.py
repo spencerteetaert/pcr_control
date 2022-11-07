@@ -57,7 +57,7 @@ class Aurora:
     TT_PRIORITY_DYNAMIC = 'D'
     TT_PRIORITY_BUTTON  = 'B'
 
-    def __init__(self, serial_port='/dev/ttyUSB0', timeout=1, baud_rat=9600):
+    def __init__(self, serial_port='/dev/ttyUSB0', timeout=1, baud_rat=9600, verbose=False):
         # depending on operating system.e.g. / dev / ttyUSB0 on GNU / Linux or COM3 on Windows.
         self._serial_port = serial_port  # serial(serial_port)
         self._baud_rat = baud_rat
@@ -72,6 +72,7 @@ class Aurora:
         self._isConnected = self._serial_object.isOpen()
         self._timeout = timeout
         self._device_init = False
+        self._verbose = verbose
 
         self.setBaudRate(baud_rate=baud_rat)
 
@@ -278,9 +279,10 @@ class Aurora:
             reply = self._serial_object.read(bytes2read)
 
             if nth_trial == trials:
-                print("\033[93m" +
-                      "Warring (systemAntwort): reply maybe wrong." +
-                      " \033[0m")
+                if self._verbose:
+                    print("\033[93m" +
+                        "Warring (systemAntwort): reply maybe wrong." +
+                        " \033[0m")
                 break
             else:
                 nth_trial += 1
@@ -420,9 +422,10 @@ class Aurora:
         found_n = int(msg[:2], 16)
 
         if self._n_port_handles is not found_n:
-            print("\033[93m" +
-                  "Warring (portHandles_updateStatusAll): Number of tools has been changed." +
-                  " \033[0m")
+            if self._verbose:
+                print("\033[93m" +
+                    "Warring (portHandles_updateStatusAll): Number of tools has been changed." +
+                    " \033[0m")
 
         for idx_found in range(found_n):
             s = 2 + 5*idx_found
@@ -478,10 +481,11 @@ class Aurora:
         elif len(stringBytes) == 2:
             return int("{0:b}".format(stringBytes[1]) + "{0:b}".format(stringBytes[0]), 2)
         else:
-            print("NIT", stringBytes)
-            print("\033[93m" +
-                  "Warring (unpackBytes): return is None " + stringMsg +
-                  " \033[0m")
+            if self._verbose:
+                print("NIT", stringBytes)
+                print("\033[93m" +
+                    "Warring (unpackBytes): return is None " + stringMsg +
+                    " \033[0m")
             return None
 
     def portHandles_int2hex(self, value_int):
@@ -509,6 +513,8 @@ class Aurora:
             self._BX('0801', get_replay=False)
             # self._serial_object.write('BX 0801\x0d')
             reply_ba = self.systemAntwort()
+            if reply_ba is None: 
+                return 
 
             # Start Sequence (A5C4) has 2 bytes. First two bytes.
             start_sequence = self.unpackBytes(reply_ba[0:2], 'start_sequence')
@@ -523,7 +529,8 @@ class Aurora:
             num_handle_reads = self.unpackBytes(reply_ba[6:7], 'num_handle_reads')
             # print('num_handle_reads = ' + str(num_handle_reads))
 
-            print("BYTE ARRAY", reply_ba)
+            if num_handle_reads is None: # Handles None case 
+                num_handle_reads = 0
 
             for idx_reads in range(num_handle_reads):
                 # Get next position s in bytearray
@@ -536,10 +543,12 @@ class Aurora:
                 found_status = self.unpackBytes(reply_ba[s:s+1], 'found_status')
 
                 if found_status == 2:
-                    print("\033[93m Handle status of " + found_ID + " is 2: Missing \033[0m")
+                    if self._verbose:
+                        print("\033[93m Handle status of " + found_ID + " is 2: Missing \033[0m")
                     break
                 elif found_status == 4:
-                    print("\033[93m Handle status of " + found_ID + " is 2: Disabled \033[0m")
+                    if self._verbose:
+                        print("\033[93m Handle status of " + found_ID + " is 2: Disabled \033[0m")
                     break
 
                 # ########### -- Debug

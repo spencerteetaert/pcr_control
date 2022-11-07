@@ -102,6 +102,9 @@ class MotorController:
         self.t0.join()
         self.t1.join()
 
+    def get_sensor_data(self):
+        return None
+
     def set_velocities(self, vels):
         '''
         Sets reference velocities for each of 4 motors
