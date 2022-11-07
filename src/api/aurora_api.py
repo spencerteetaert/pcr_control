@@ -3,7 +3,7 @@ import signal
 import time
 import threading 
 
-from Aurora import Aurora
+from .Aurora import Aurora
 
 class AuroraAPI:
     def __init__(self):
