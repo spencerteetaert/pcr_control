@@ -12,18 +12,30 @@ dt = 3
 api = MotorController()
 api.enable()
 
+print("API enabled.")
 speed = [0, 0, 0, 0]
 
 def on_press(key):
     global speed, api
-    if key == keyboard.Key.up:
-        print("UP")
+    if key == keyboard.KeyCode.from_char('t'):
+        api.auto_tension = not api.auto_tension
+    elif key == keyboard.KeyCode.from_char('w'):
         speed[0] += 0.1
-    elif key == keyboard.Key.down:
-        print("DOWN")
+    elif key == keyboard.KeyCode.from_char('s'):
         speed[0] -= 0.1
+    elif key == keyboard.KeyCode.from_char('q'):
+        speed[1] += 0.1
+    elif key == keyboard.KeyCode.from_char('a'):
+        speed[1] -= 0.1
+    elif key == keyboard.Key.left:
+        speed[1] -= 0.1
+        speed[0] += 0.1
+    elif key == keyboard.Key.right:
+        speed[0] -= 0.1
+        speed[1] += 0.1
     else:
-        speed[0] = 0
+        speed = [0, 0, 0, 0]
+    print(speed)
     api.set_velocity(speed)
 
 def on_release(key):
@@ -35,25 +47,8 @@ def on_release(key):
 listener = keyboard.Listener(
     on_press=on_press,
     on_release=on_release)
-# listener.start()
-
+listener.start()
 print("Manual control ready")
-api.set_velocity([0.2, 0.2, 0, 0])
-time.sleep(2)
-# listener.join()
+listener.join()
 
-api.disable
-
-# k = 0
-# while k != 'q':
-#     k = keyboard.read_key()
-#     print(k)
-
-#     if k == 'up':
-#         api.set_velocity([0.1, 0, 0, 0])
-#     elif k == 'down':
-#         api.set_velocity([-0.1, 0, 0, 0])
-#     else:
-#         api.set_velocity([0, 0, 0, 0])
-
-# api.disable()
+api.disable()

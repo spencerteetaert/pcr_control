@@ -33,12 +33,13 @@ MAX_SPEED = 2
 
 
 class MotorController:
-    def __init__(self):
+    def __init__(self, auto_tension=True):
         self.mtr_datas = [MotorData(), MotorData()]
         self.adcs = [AdcResult(), AdcResult()]
         self.busses = [can.interface.Bus('can0', bitrate=BITRATE), can.interface.Bus('can1', bitrate=BITRATE)]
         self.vels = [0,0,0,0]
         self.enabled = False
+        self.auto_tension = auto_tension
 
         print("Setup controller with Kp = {}, Ki = {} Kd = {}".format(Kp, Ki, Kd))
         print("Max speed: {}".format(MAX_SPEED))
@@ -138,7 +139,14 @@ class MotorController:
             self.vctrl[motor_idx[0]].run(self.vels[motor_idx[0]])
             self.vctrl[motor_idx[1]].run(self.vels[motor_idx[1]])
 
-            send_mtr_current(self.busses[board_idx], self.vctrl[motor_idx[0]].iqref, self.vctrl[motor_idx[1]].iqref)
+            if self.auto_tension:
+                i_m0 = min(self.vctrl[motor_idx[0]].iqref, -0.03)
+                i_m1 = min(self.vctrl[motor_idx[1]].iqref, -0.03)
+            else:
+                i_m0 = self.vctrl[motor_idx[0]].iqref # right motor, pos on left bend, neg on right 
+                i_m1 = self.vctrl[motor_idx[1]].iqref # left motor, pos on right bend, neg on left 
+
+            send_mtr_current(self.busses[board_idx], i_m0, i_m1)
         else:
             send_mtr_current(self.busses[board_idx], 0, 0)
 
@@ -157,7 +165,7 @@ class CanHandler:
             self.msg_handler.handle_msg(msg)
 
 if __name__ == "__main__":
-    controller = MotorController()
+    controller = MotorController(False)
 
     ''''
     Computer 
@@ -167,7 +175,7 @@ if __name__ == "__main__":
     controller.enable()
 
     print("Starting trajectory")
-    controller.set_velocities([1, 2, 0.2, 0])
+    controller.set_velocity([1, 2, 0.2, 0])
     time.sleep(30)
 
 
