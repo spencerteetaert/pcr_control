@@ -34,10 +34,10 @@ MAX_SPEED = 2
 
 class MotorController:
     def __init__(self, auto_tension=True):
-        self.mtr_datas = [MotorData(), MotorData()]
-        self.adcs = [AdcResult(), AdcResult()]
-        self.busses = [can.interface.Bus('can0', bitrate=BITRATE), can.interface.Bus('can1', bitrate=BITRATE)]
-        self.vels = [0,0,0,0]
+        self.mtr_datas = [MotorData()]
+        self.adcs = [AdcResult()]
+        self.busses = [can.interface.Bus('can0', bitrate=BITRATE)]
+        self.vels = [0,0]
         self.enabled = False
         self.auto_tension = auto_tension
 
@@ -45,12 +45,10 @@ class MotorController:
         print("Max speed: {}".format(MAX_SPEED))
         self.vctrl = [
             VelocityController(self.busses[0], Kp, Ki, Kd), 
-            VelocityController(self.busses[0], Kp, Ki, Kd), 
-            VelocityController(self.busses[1], Kp, Ki, Kd), 
-            VelocityController(self.busses[1], Kp, Ki, Kd)
+            VelocityController(self.busses[0], Kp, Ki, Kd)
         ]
 
-        self.msg_handlers = [MessageHandler(), MessageHandler()]
+        self.msg_handlers = [MessageHandler()]
 
         self.msg_handlers[0].set_id_handler(ArbitrationIds.status, self.mtr_datas[0].set_status)
         self.msg_handlers[0].set_id_handler(ArbitrationIds.current, self.mtr_datas[0].set_current)
@@ -58,16 +56,9 @@ class MotorController:
         self.msg_handlers[0].set_id_handler(ArbitrationIds.velocity, partial(self._on_velocity_msg, motor_idx=[0, 1]))
         self.msg_handlers[0].set_id_handler(ArbitrationIds.adc6, self.adcs[0].set_values)
 
-        self.msg_handlers[1].set_id_handler(ArbitrationIds.status, self.mtr_datas[1].set_status)
-        self.msg_handlers[1].set_id_handler(ArbitrationIds.current, self.mtr_datas[1].set_current)
-        self.msg_handlers[1].set_id_handler(ArbitrationIds.position, self.mtr_datas[1].set_position)
-        self.msg_handlers[1].set_id_handler(ArbitrationIds.velocity, partial(self._on_velocity_msg, motor_idx=[2, 3]))
-        self.msg_handlers[1].set_id_handler(ArbitrationIds.adc6, self.adcs[1].set_values)
 
         self.handler0 = CanHandler(0, self.busses[0], self.msg_handlers[0])
-        self.handler1 = CanHandler(1, self.busses[1], self.msg_handlers[1])
         self.t0 = threading.Thread(target=self.handler0.loop)
-        self.t1 = threading.Thread(target=self.handler1.loop)
 
         # setup sigint handler to disable motor on CTRL+C
         def sigint_handler(signal, frame):
@@ -82,10 +73,8 @@ class MotorController:
         '''
         print("Enabling motors...")
         start_system(self.busses[0], self.mtr_datas[0], False)
-        start_system(self.busses[1], self.mtr_datas[1], False)
 
         self.t0.start()
-        self.t1.start()
 
         self.enabled = True
 
@@ -95,13 +84,10 @@ class MotorController:
         '''
         print("Disabling motors...")
         stop_system(self.busses[0])
-        stop_system(self.busses[1])
 
         self.handler0.kill = True
-        self.handler1.kill = True
 
         self.t0.join()
-        self.t1.join()
 
     def get_sensor_data(self):
         return None
@@ -116,8 +102,6 @@ class MotorController:
         if self.enabled:
             self.vels[0] = vels[0] / GEAR_RATIO
             self.vels[1] = vels[1] / GEAR_RATIO
-            self.vels[2] = vels[2] / GEAR_RATIO
-            self.vels[3] = 0 / GEAR_RATIO # MANUAL OVERRIDE SO I DONT ACCIDENTALLY TURN THIS ON
         else:
             raise AssertionError("Motor is not enabled.")
 
@@ -161,7 +145,7 @@ class CanHandler:
         for msg in self.bus:
             if self.kill:
                 break
-
+            
             self.msg_handler.handle_msg(msg)
 
 if __name__ == "__main__":
@@ -175,7 +159,7 @@ if __name__ == "__main__":
     controller.enable()
 
     print("Starting trajectory")
-    controller.set_velocity([1, 2, 0.2, 0])
+    controller.set_velocities([1, 2, 0.2, 0])
     time.sleep(30)
 
 
