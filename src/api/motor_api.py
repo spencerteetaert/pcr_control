@@ -27,10 +27,10 @@ BITRATE = 1e6
 GEAR_RATIO = 4
 Kp = 3
 Kd = 0
-Ki = 5
+Ki = 60
 
 MAX_SPEED = 2
-
+HOLDING_CURRENT = 0.1
 
 class MotorController:
     def __init__(self, auto_tension=True):
@@ -117,7 +117,7 @@ class MotorController:
             self.vels[0] = vels[0] / GEAR_RATIO
             self.vels[1] = vels[1] / GEAR_RATIO
             self.vels[2] = vels[2] / GEAR_RATIO
-            self.vels[3] = 0 / GEAR_RATIO # MANUAL OVERRIDE SO I DONT ACCIDENTALLY TURN THIS ON
+            self.vels[3] = vels[3] / GEAR_RATIO
         else:
             raise AssertionError("Motor is not enabled.")
 
@@ -140,8 +140,8 @@ class MotorController:
             self.vctrl[motor_idx[1]].run(self.vels[motor_idx[1]])
 
             if self.auto_tension:
-                i_m0 = min(self.vctrl[motor_idx[0]].iqref, -0.03)
-                i_m1 = min(self.vctrl[motor_idx[1]].iqref, -0.03)
+                i_m0 = max(self.vctrl[motor_idx[0]].iqref, HOLDING_CURRENT)
+                i_m1 = min(self.vctrl[motor_idx[1]].iqref, -HOLDING_CURRENT)
             else:
                 i_m0 = self.vctrl[motor_idx[0]].iqref # right motor, pos on left bend, neg on right 
                 i_m1 = self.vctrl[motor_idx[1]].iqref # left motor, pos on right bend, neg on left 
