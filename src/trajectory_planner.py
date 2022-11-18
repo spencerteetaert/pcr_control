@@ -110,7 +110,7 @@ def astar(map, start, end, noise_map=None, visualize=False):
 
             # Add the child to the open list -- TODO: Remove lower f child 
             if visualize:
-                disp_map[child.position[0], child.position[1]] = [0, 0, 255]
+                disp_map[child.position[1], child.position[0]] = [0, 0, 255]
             open_list.append(child)
     
     logging.info("Path not found.")
@@ -147,7 +147,7 @@ def generate_perlin_noise_2d(shape, res):
 class Profile:
     def __init__(self, index, start_time, L, C_smoothness=4):
         # TODO ? : Add max jerk values, add synchronization between motors 
-        self.v_max = 3 # max velocity of motors, m/s in tendon displacement 
+        self.v_max = 1 # max velocity of motors, m/s in tendon displacement 
         self.a_max = 5 # max acceleration of motors, m/s**2 in tendon displacement 
         self.d_max = 5 # max deacceleration of motors, m/s**2 in tendon displacement 
         assert C_smoothness > 1 and C_smoothness < 12, "C_smoothness only support between 2 and 11"
@@ -227,10 +227,11 @@ class Profile:
         elif t < self.Tlo + self.Tcr: # Cruise 
             return self.sign*self.lamb*self.v_max
 
-        elif t <= self.T: # Set down
+        elif t <= self.T + 0.00001: # Set down, small constant for floating point error
             if not self.post_blend:
                 return self.sign*self.lamb*self.v_max*self.vn4(1 - self.tau(t))
-            return self.sign*self.v_max + (self.next_profile.sign*self.next_profile.v_max - self.sign*self.v_max)*self.vn4(self.tau(t))
+            # return self.sign*self.v_max + (self.next_profile.sign*self.next_profile.v_max - self.sign*self.v_max)*self.vn4(self.tau(t))
+            return self.sign*self.v_max*self.lamb + (self.next_profile.sign*self.next_profile.lamb*self.next_profile.v_max - self.sign*self.lamb*self.v_max)*self.vn4(self.tau(t))
         else:
             print(self.T, self.Tlo, self.Tcr, self.Tsd)
             raise ValueError(f"Requested time is after profile defined range.\n  Profile {self.index}: {t}s")
@@ -262,7 +263,10 @@ def blend_profiles(p1, p2):
     Given two profiles p1 and p2, blend them together. 
     '''
     assert (p1.v_max == p2.v_max), NotImplementedError()
-    assert(p1.lamb == p2.lamb == 1), NotImplementedError()
+    # assert(p1.lamb == p2.lamb == 1), NotImplementedError(f"{p1.lamb}, {p2.lamb}")
+    
+    p1.post_blend = True
+    p2.pre_blend = True
 
     v_star = p2.sign*p2.v_max - p1.sign*p1.v_max
     Tble = p1.Ca[4]*max(
@@ -282,21 +286,17 @@ def blend_profiles(p1, p2):
     # p1.Tsd = Tble
     # p2.Tlo = Tble
 
-
     p2.start_time += p1.Tlo + p1.Tcr - p1_original_T
 
-    p1.post_blend = True
     p1.next_profile = p2
-    
-    p2.pre_blend = True
     p2.last_profile = p1   
 
 class TrajectoryPlanner:
     def __init__(self, C_smoothness=4):
         assert C_smoothness > 1 and C_smoothness < 12, "C_smoothness only support between 2 and 11"
         self.C_smoothness = 4
-        # self.blend = True
-        self.blend = False
+        self.blend = True
+        # self.blend = False
 
     def gen_trajectory(self, PCR_controller, start_pt, end_pt, dt=0.001, add_noise=False, verbose=True):
         '''
@@ -438,46 +438,9 @@ class TrajectoryPlanner:
 if __name__=='__main__':
     ## Trajectorty planning testing 
     planner = TrajectoryPlanner()
-    planner.gen_smooth_trajectory([1, -1.5, 2, -3.5, 0.8, -0.7], 1000)
-    # planner.gen_smooth_trajectory([1, -1, 0.5], 3000)
-
-    pass
-
-
-    # # Profile mechanic testing 
-    # p1 = Profile(0, 0, 1)
-    # p2 = Profile(1, p1.T, -1)
-
-    # print(p1.lamb, p2.lamb)
-    # print(p1.T, p2.T)
-    # print(p1.start_time, p2.start_time)
-
-    # blend_profiles(p1, p2)
-
-    # t = np.linspace(0, p1.T + p2.T, 2000)
-
-    # x = []
-    # for _t in t:
-    #     # print("_T", _t, p1.T)
-    #     if _t < p1.T:
-    #         # print("1")
-    #         x += [p1.s(_t)]
-    #     else:
-    #         # print("2")
-    #         x += [p2.s(_t) + p1.L]
-
-    # v = []
-    # for _t in t:
-    #     if _t < p1.T:
-    #         v += [p1.v(_t)]
-    #     else:
-    #         v += [p2.v(_t)]
-
-    # plt.plot(t, x, label='position')
-    # plt.plot(t, v, label='velocity')
-    # plt.legend()
-    # plt.show()
-
+    planner.gen_smooth_trajectory([1, -1.5, 2, 3, -3.5, 0.3, -1.5, 0.2], 100)
+    planner.gen_smooth_trajectory([0.1, 0.06, 0.3, -0.07, -0.01, -0.1, 0.05], 100)
+    planner.gen_smooth_trajectory([1, -1, 0.5], 3000)
 
 
     # Path planning testing 
