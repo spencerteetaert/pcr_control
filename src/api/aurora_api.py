@@ -18,6 +18,9 @@ class AuroraAPI:
         self.workspace = workspace
         self.verbose = verbose
 
+        self.file = None
+        self.log_flag = False
+
         self.tracker = Aurora(baud_rat=9600)
         self.thread = threading.Thread(target=self._read_sensor_data)
         self.kill = False
@@ -61,6 +64,9 @@ class AuroraAPI:
         self.tracker.portHandles_updateStatusAll()
         print("Aurora tracker set.")
 
+    def __repr__(self):
+        pos = self.get_position()
+        return f"Aurora position: {pos[0]:0.4}x, {pos[1]:0.4}y, {pos[2]:0.4}z"
         
     def start_tracking(self):
         # Tracking
@@ -83,6 +89,8 @@ class AuroraAPI:
                 self.sensor_data = new_data
                 self.latest_updated_data = new_data
 
+                self.log()
+
                 if self.calibrating:
                     print("\rCurrent Reading:", new_data[0][1], end='')
                 elif self.verbose:
@@ -103,6 +111,24 @@ class AuroraAPI:
             print("ERROR: Aurora is not calibrated to workspace. Unable to provide position.")
             return None
         return self.norm_rotation @ (self.sensor_data[0][1] + self.norm_translation)
+
+    def enable_log(self, filename):
+        self.file = open(filename + "_aurora.txt", 'a')
+        self.file.write('time,x,y,z,x_raw,y_raw,z_raw,q1,q2,q3,q4\n')
+        self.log_flag = True
+    
+    def disable_log(self):
+        self.log_flag = False
+        if self.file is not None:
+            self.file.close()
+
+    def log(self):
+        if self.log_flag:
+            timestep = time.time()
+            pos = self.get_position()
+            pos_raw = self.sensor_data[0][1]
+            q = self.sensor_data[0][0]
+            self.file.write(f"{timestep},{pos[0]},{pos[1]},{pos[2]},{pos_raw[0]},{pos_raw[1]},{pos_raw[2]},{q[0]},{q[1]},{q[2]},{q[3]}\n")
 
     def stop_tracking(self):
         self.tracker._BEEP(2)
@@ -185,5 +211,7 @@ if __name__=='__main__':
     aurora = AuroraAPI(verbose=True)
 
     aurora.start_tracking()  
+    aurora.enable_log('data/DELETE')
     time.sleep(15)
+    aurora.disable_log()
     aurora.stop_tracking()

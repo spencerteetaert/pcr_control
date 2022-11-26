@@ -86,7 +86,7 @@ class Link:
         return [centerCoordinates, radius, color, -1]
     #endregion 
 
-class PCRController:
+class CC_Model:
     def __init__(self, num_links, link_lengths, link_base_points, link_exclusion_radii):
         self.links = []
         for i in range(num_links):
@@ -96,6 +96,8 @@ class PCRController:
         self.trajectory_planner = TrajectoryPlanner()
 
         self.trajectory_planner.gen_trajectory(self, self.links[0].end_point, (0.1, -0.1), verbose=True)
+        self.filename = "_model.txt"
+        self.log = False
 
     #region kinematics
     def _check_end_point(self, end_point):
@@ -110,6 +112,10 @@ class PCRController:
         for link in self.links:
             link.update_end_point(end_point)
         return True
+
+    def enable_log(self, filename):
+        self.filename = filename + "_model.txt"
+        self.log = True
     #endregion
 
     #region planning
@@ -152,4 +158,4 @@ if __name__=='__main__':
 
     config = yaml.safe_load(open(args.config, 'r'))
 
-    controller = PCRController(**config['controller_params'])
+    controller = CC_Model(**config['controller_params'])

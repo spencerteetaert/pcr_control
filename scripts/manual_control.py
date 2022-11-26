@@ -57,7 +57,10 @@ listener = keyboard.Listener(
     on_release=on_release)
 listener.start()
 
+api.enable_log('data/DELETE')
+
 print("Manual control ready")
 listener.join()
 
+api.disable_log()
 api.disable()
