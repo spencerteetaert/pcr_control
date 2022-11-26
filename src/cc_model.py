@@ -116,6 +116,9 @@ class CC_Model:
     def enable_log(self, filename):
         self.filename = filename + "_model.txt"
         self.log = True
+    
+    def disable_log(self):
+        self.log = False
     #endregion
 
     #region planning
