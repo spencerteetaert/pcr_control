@@ -9,7 +9,7 @@ from src.api.motor_api import MotorController
 velocity = 1
 dt = 3
 
-api = MotorController()
+api = MotorController(False)
 
 api.enable()
 print("API enabled.")
