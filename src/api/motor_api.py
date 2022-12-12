@@ -27,19 +27,29 @@ BITRATE = 1e6
 GEAR_RATIO = 4
 Kp = 3
 Kd = 0
-Ki = 5
+Ki = 60
 
 MAX_SPEED = 2
-
+HOLDING_CURRENT = 0.1
 
 class MotorController:
-    def __init__(self, auto_tension=True):
+    def __init__(self, auto_tension=True, log_rate=100):
+        '''
+        Args: 
+            auto_tension (bool): whether to enact a minimum holding current in motors
+            log_rate (int): frequency (hz) that motors will log at 
+        '''
         self.mtr_datas = [MotorData(), MotorData()]
         self.adcs = [AdcResult(), AdcResult()]
         self.busses = [can.interface.Bus('can0', bitrate=BITRATE), can.interface.Bus('can1', bitrate=BITRATE)]
         self.vels = [0,0,0,0]
         self.enabled = False
         self.auto_tension = auto_tension
+        self.file = None
+        self.log_flag = False
+        self.log_rate = log_rate
+        self.last_timestep0 = time.time()
+        self.last_timestep1 = time.time()
 
         print("Setup controller with Kp = {}, Ki = {} Kd = {}".format(Kp, Ki, Kd))
         print("Max speed: {}".format(MAX_SPEED))
@@ -106,6 +116,37 @@ class MotorController:
     def get_sensor_data(self):
         return None
 
+    def enable_log(self, filename):
+        self.file0 = open(filename + "_motor0.txt", 'a')
+        self.file0.write('time,command_i1,command_i2,set_v1,set_v2,i1,i2,pos1,pos2,vel1,vel2\n')
+        self.file1 = open(filename + "_motor1.txt", 'a')
+        self.file1.write('time,command_i1,command_i2,set_v1,set_v2,i1,i2,pos1,pos2,vel1,vel2\n')
+        self.log_flag = True
+
+    def disable_log(self):
+        self.log_flag = False
+        if self.file0 is not None:
+            self.file0.close()
+            self.file1.close()
+
+    def log(self, board, i1, i2):
+        if self.log_flag:
+            timestep = time.time()
+            
+            if board:
+                if timestep - self.last_timestep1 < 1/self.log_rate:
+                    return
+                file = self.file1
+                self.last_timestep1 = timestep
+            else:
+                if timestep - self.last_timestep0 < 1/self.log_rate:
+                    return
+                file = self.file0
+                self.last_timestep0 = timestep
+
+            file.write(f"{timestep},{i1},{i2},{self.vels[0+2*board]},{self.vels[1+2*board]},{self.mtr_datas[board].mtr1.current.value},{self.mtr_datas[board].mtr2.current.value},{self.mtr_datas[board].mtr1.position.value},{self.mtr_datas[board].mtr2.position.value},{self.mtr_datas[board].mtr1.velocity.value},{self.mtr_datas[board].mtr2.velocity.value}\n")
+
+
     def set_velocity(self, vels):
         '''
         Sets reference velocities for each of 4 motors
@@ -117,7 +158,7 @@ class MotorController:
             self.vels[0] = vels[0] / GEAR_RATIO
             self.vels[1] = vels[1] / GEAR_RATIO
             self.vels[2] = vels[2] / GEAR_RATIO
-            self.vels[3] = 0 / GEAR_RATIO # MANUAL OVERRIDE SO I DONT ACCIDENTALLY TURN THIS ON
+            self.vels[3] = vels[3] / GEAR_RATIO
         else:
             raise AssertionError("Motor is not enabled.")
 
@@ -140,15 +181,18 @@ class MotorController:
             self.vctrl[motor_idx[1]].run(self.vels[motor_idx[1]])
 
             if self.auto_tension:
-                i_m0 = min(self.vctrl[motor_idx[0]].iqref, -0.03)
-                i_m1 = min(self.vctrl[motor_idx[1]].iqref, -0.03)
+                i_m0 = max(self.vctrl[motor_idx[0]].iqref, HOLDING_CURRENT)
+                i_m1 = min(self.vctrl[motor_idx[1]].iqref, -HOLDING_CURRENT)
             else:
                 i_m0 = self.vctrl[motor_idx[0]].iqref # right motor, pos on left bend, neg on right 
                 i_m1 = self.vctrl[motor_idx[1]].iqref # left motor, pos on right bend, neg on left 
 
             send_mtr_current(self.busses[board_idx], i_m0, i_m1)
+            self.log(board_idx, i_m0, i_m1)
         else:
             send_mtr_current(self.busses[board_idx], 0, 0)
+            self.log(board_idx, 0, 0)
+
 
 class CanHandler:
     def __init__(self, handlerID, bus, msg_handler):

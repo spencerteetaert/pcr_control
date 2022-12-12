@@ -33,10 +33,10 @@ MAX_SPEED = 2
 
 
 class MotorController:
-    def __init__(self, auto_tension=True):
+    def __init__(self, can_port="can0", auto_tension=True):
         self.mtr_datas = [MotorData()]
         self.adcs = [AdcResult()]
-        self.busses = [can.interface.Bus('can0', bitrate=BITRATE)]
+        self.busses = [can.interface.Bus(can_port, bitrate=BITRATE)]
         self.vels = [0,0]
         self.enabled = False
         self.auto_tension = auto_tension
@@ -124,8 +124,8 @@ class MotorController:
             self.vctrl[motor_idx[1]].run(self.vels[motor_idx[1]])
 
             if self.auto_tension:
-                i_m0 = min(self.vctrl[motor_idx[0]].iqref, -0.03)
-                i_m1 = min(self.vctrl[motor_idx[1]].iqref, -0.03)
+                i_m0 = max(self.vctrl[motor_idx[0]].iqref, 0.01)
+                i_m1 = min(self.vctrl[motor_idx[1]].iqref, -0.01)
             else:
                 i_m0 = self.vctrl[motor_idx[0]].iqref # right motor, pos on left bend, neg on right 
                 i_m1 = self.vctrl[motor_idx[1]].iqref # left motor, pos on right bend, neg on left 
