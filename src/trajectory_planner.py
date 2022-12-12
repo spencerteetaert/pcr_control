@@ -3,7 +3,7 @@ import logging
 import yaml
 
 import numpy as np
-np.random.seed(0)
+# np.random.seed(0)
 import cv2
 import matplotlib.pyplot as plt
 
@@ -32,7 +32,7 @@ def astar(map, start, end, noise_map=None, visualize=False):
     end_node.g = end_node.h = end_node.f = 0
 
     if map[end_node.position[1]][end_node.position[0]] != 255:
-        print("Requested position is unreachable")
+        print(f"Requested position is unreachable: {end_node.position}")
         return []
 
     open_list = []
@@ -54,7 +54,7 @@ def astar(map, start, end, noise_map=None, visualize=False):
         if visualize:
             disp_map[current_node.position[1], current_node.position[0]] = [0, 255, 0]
             cv2.imshow("test", cv2.resize(disp_map, (500, 500)))
-            cv2.waitKey(3)
+            cv2.waitKey(1)
 
         open_list.pop(current_index)
         closed_list.append(current_node)
@@ -219,8 +219,7 @@ class Profile:
         elif t < self.Tlo: # Lift off
             if not self.pre_blend:
                 return self.sign*self.lamb*self.v_max*self.vn4(self.tau(t))
-            raise
-            return self.last_profile.sign*self.last_profile.v_max + (self.sign*self.v_max - self.last_profile.sign*self.last_profile.v_max)*self.vn4(self.tau(t))
+            return self.last_profile.sign*self.last_profile.v_max*self.last_profile.lamb + (self.sign*self.v_max*self.lamb - self.last_profile.sign*self.last_profile.lamb*self.last_profile.v_max)*self.vn4(self.tau(t))
 
         elif t < self.Tlo + self.Tcr: # Cruise 
             return self.sign*self.lamb*self.v_max
@@ -354,8 +353,7 @@ class TrajectoryPlanner:
                 print("Unable to set link to point", item)
             qs += [np.array([link.dq for link in self.controller.links]).flatten().tolist()]
 
-        print(np.array(qs), np.array(qs).shape)
-        smoothed_qs = [self.gen_smooth_trajectory(np.array(qs)[:,i], 1/dt) for i in range(len(qs[0]))]
+        smoothed_qs = [self.gen_smooth_trajectory(np.array(qs)[:,i], 1/dt, verbose=verbose) for i in range(len(qs[0]))]
 
         return smoothed_qs
 
@@ -389,11 +387,12 @@ class TrajectoryPlanner:
         else:
             profile_times = [profiles[i].T for i in range(0, len(profiles))]
         
-        boundaries = np.cumsum(profile_times)
-        total_time = np.sum(profile_times)
+        boundaries = np.round(np.cumsum(profile_times), 10)
+        total_time = np.round(np.sum(profile_times), 10)
         command_times = np.linspace(0, total_time, int(total_time * command_freq))
 
-        print('\n'.join([f"Profile {i}:" + str((s.start_time, s.start_time + s.T, s.T)) for i, s in enumerate(profiles)]))
+        if verbose:
+            print('\n'.join([f"Profile {i}:" + str((s.start_time, s.start_time + s.T, s.T)) for i, s in enumerate(profiles)]))
 
         # Generate velocity profile
         profile_output_v = []
@@ -418,7 +417,7 @@ class TrajectoryPlanner:
             # Draw signal profile 
             aligned_pos_values = []
             pos_values_cumsum = np.cumsum(pos_values)
-            boundaries_start = [profiles[i].start_time + profiles[i].Tsd for i in range(1, len(profiles))] + [profiles[-1].start_time + profiles[-1].T]
+            boundaries_start = [profiles[i].start_time + profiles[i].Tsd for i in range(1, len(profiles))] + [float('inf')]
 
             index = 0
             for t in command_times:
