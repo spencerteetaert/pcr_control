@@ -296,17 +296,15 @@ class TrajectoryPlanner:
         assert C_smoothness > 1 and C_smoothness < 12, "C_smoothness only support between 2 and 11"
         self.C_smoothness = 4
         self.blend = True
-        # self.blend = False
 
-    def gen_trajectory(self, PCR_controller, start_pt, end_pt, dt=0.001, add_noise=False, verbose=True):
+    def gen_trajectory(self, PCR_controller, target_pt, dt=0.001, add_noise=False, verbose=True):
         '''
         Given map centered at 0m,0m, a gridscale, and starting/ending points, generates a smooth 
         profile for motor velocities. 
 
         Args:
             PCR_controller: PCR_controller object for robot
-            start_pt (tuple): starting point (m) 
-            end_pt (tuple): ending point (m) 
+            target_pt (tuple): ending point (m) 
             dt (float): time between returned velocity commands (s) 
             add_noise (bool): whether to add positional noise to the trajectory 
 
@@ -314,8 +312,8 @@ class TrajectoryPlanner:
             nx4 list containing discrete velocity commands for each motor, each dt time apart
         '''
         costmap = PCR_controller.costmap
-        start_pt_px = (np.array(start_pt)*PCR_controller.scale + np.array(costmap.shape) / 2).astype(int)
-        end_pt_px = (np.array(end_pt)*PCR_controller.scale + np.array(costmap.shape) / 2).astype(int)
+        start_pt_px = (np.array(PCR_controller.end_point)*PCR_controller.scale + np.array(costmap.shape) / 2).astype(int)
+        end_pt_px = (np.array(target_pt)*PCR_controller.scale + np.array(costmap.shape) / 2).astype(int)
 
         # Path planning testing 
         if add_noise:
