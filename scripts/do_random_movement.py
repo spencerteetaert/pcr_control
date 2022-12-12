@@ -1,33 +1,55 @@
 import sys
 sys.path.append('.')
+import time
 
 import yaml
 
-from src.data_generation.generate_movement import do_movement
+from src.data_generation.generate_movement import get_random_end_point
 from src.controllers.cc_controller import CC_Model
 from src.trajectory_planner import TrajectoryPlanner
 from src.api.motor_api import MotorController
 from src.api.aurora_api import AuroraAPI
 
 if __name__=='__main__':
+    # Initialize required objects
     config = yaml.safe_load(open("configs/config1.yaml", 'r'))
-    controller = CC_Model(config['controller_params'])
+    model = CC_Model(config['controller_params'])
 
-    controller.update_end_point([0.25, 0.45])
+    controller = MotorController()
+    aurora = AuroraAPI(verbose=True)
 
-    planner = TrajectoryPlanner(controller, config['trajectory_params'])
+    controller.enable()
+    aurora.start_tracking()
 
-    planner.gen_trajectory([0.10, 0.30], add_noise=False)
+    # Update endpoint
+    print("POSITION", aurora.get_position()[:2])
+    print("End point updated:", model.update_end_point(aurora.get_position()[:2]))
+    print("Controller position updated.", model.end_point)
+    input("Press enter to continue")
+    planner = TrajectoryPlanner(model, config['trajectory_params'])
 
-    # controller = MotorController()
-    # aurora = AuroraAPI(verbose=True)
+    dt = 0.001
+    qs = planner.gen_trajectory(get_random_end_point(model), dt=dt, add_noise=True, verbose=True)
 
-    # controller.enable()
-    # aurora.start_tracking()  
+    print("Trajectory generated.")
+    input("Press enter to continue")
 
-    # do_movement('data/DEL/', None, aurora, controller)
+    # aurora.enable_log()
+    # controller.enable_log()
 
-    # aurora.stop_tracking()
-    # controller.disable()
+    start_time = time.time()
+    i = 0
+    while time.time() - start_time < len(qs[0]) * dt:
+        print(qs[0][i], i*dt - (time.time() - start_time))
+
+        i += 1
+        time.sleep(max(0, i*dt - (time.time() - start_time)))
+
+    # aurora.disable_log()
+    # controller.disable_log()
+        
+
+    aurora.stop_tracking()
+    controller.disable()
 
     
