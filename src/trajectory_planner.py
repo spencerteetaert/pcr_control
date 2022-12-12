@@ -1,6 +1,6 @@
 import time 
 import logging
-# logging.basicConfig(level=logging.DEBUG)
+import yaml
 
 import numpy as np
 np.random.seed(0)
@@ -25,8 +25,6 @@ def astar(map, start, end, noise_map=None, visualize=False):
         disp_map = np.stack([disp_map, disp_map, disp_map]).astype(np.uint8)
         disp_map = np.transpose(disp_map, (1, 2, 0))
     START = time.time() 
-
-    
 
     start_node = Node(None, start)
     start_node.g = start_node.h = start_node.f = 0
@@ -145,11 +143,11 @@ def generate_perlin_noise_2d(shape, res):
 
 #region Trajectory Planning
 class Profile:
-    def __init__(self, index, start_time, L, C_smoothness=4):
+    def __init__(self, index, start_time, L, params, C_smoothness=4):
         # TODO ? : Add max jerk values, add synchronization between motors 
-        self.v_max = 1 # max velocity of motors, m/s in tendon displacement 
-        self.a_max = 5 # max acceleration of motors, m/s**2 in tendon displacement 
-        self.d_max = 5 # max deacceleration of motors, m/s**2 in tendon displacement 
+        self.v_max = params['v_max'] # max velocity of motors, rad/s in motor rotation
+        self.a_max = params['a_max'] # max acceleration of motors, rad/s**2 in motor rotation
+        self.d_max = params['d_max'] # max deacceleration of motors, rad/s**2 in motor rotation
         assert C_smoothness > 1 and C_smoothness < 12, "C_smoothness only support between 2 and 11"
         self.C_smoothness = C_smoothness
         self.start_time = start_time
@@ -292,18 +290,20 @@ def blend_profiles(p1, p2):
     p2.last_profile = p1   
 
 class TrajectoryPlanner:
-    def __init__(self, C_smoothness=4):
+    def __init__(self, PCR_controller, trajector_params, C_smoothness=4):
         assert C_smoothness > 1 and C_smoothness < 12, "C_smoothness only support between 2 and 11"
         self.C_smoothness = 4
         self.blend = True
+        self.controller = PCR_controller
 
-    def gen_trajectory(self, PCR_controller, target_pt, dt=0.001, add_noise=False, verbose=True):
+        self.params = trajector_params
+
+    def gen_trajectory(self, target_pt, dt=0.001, add_noise=False, verbose=True):
         '''
         Given map centered at 0m,0m, a gridscale, and starting/ending points, generates a smooth 
         profile for motor velocities. 
 
         Args:
-            PCR_controller: PCR_controller object for robot
             target_pt (tuple): ending point (m) 
             dt (float): time between returned velocity commands (s) 
             add_noise (bool): whether to add positional noise to the trajectory 
@@ -311,18 +311,20 @@ class TrajectoryPlanner:
         Returns: 
             nx4 list containing discrete velocity commands for each motor, each dt time apart
         '''
-        costmap = PCR_controller.costmap
-        start_pt_px = (np.array(PCR_controller.end_point)*PCR_controller.scale + np.array(costmap.shape) / 2).astype(int)
-        end_pt_px = (np.array(target_pt)*PCR_controller.scale + np.array(costmap.shape) / 2).astype(int)
+        costmap = self.controller.costmap
+        start_pt_px = (np.array(self.controller.end_point)*self.controller.scale).astype(int)
+        end_pt_px = (np.array(target_pt)*self.controller.scale).astype(int)
 
         # Path planning testing 
         if add_noise:
-            noise_map = generate_perlin_noise_2d(costmap.shape, (10, 10))*5
+            noise_map = generate_perlin_noise_2d(costmap.shape, np.array(costmap.shape)//20)*5
             noise_map = np.clip(noise_map, 0, 1)*255
-            path = astar(costmap, start_pt_px, end_pt_px, noise_map=noise_map, visualize=add_noise)
+            path = astar(costmap, start_pt_px, end_pt_px, noise_map=noise_map, visualize=verbose)
         else:
             path = astar(costmap, start_pt_px, end_pt_px, visualize=verbose)
-
+        if not len(path):
+            print("Trajectory generation failed.")
+            return []
 
         if verbose:
             disp_image = np.zeros((*costmap.shape, 3)).astype(np.uint8)
@@ -345,14 +347,12 @@ class TrajectoryPlanner:
         3) generate and return smooth tendon displacement profile 
         '''
 
-        path = [(item - np.array(costmap.shape) / 2) / PCR_controller.scale for item in path]
+        path = [item / self.controller.scale + self.controller.costmap_offset_m for item in path]
         qs = [] # rad
         for item in path: 
-            if not PCR_controller.update_end_point(item):
+            if not self.controller.update_end_point(item):
                 print("Unable to set link to point", item)
-            
-            print(np.array([link.dq for link in PCR_controller.links]).flatten().shape)
-            qs += [np.array([link.dq for link in PCR_controller.links]).flatten().tolist()]
+            qs += [np.array([link.dq for link in self.controller.links]).flatten().tolist()]
 
         print(np.array(qs), np.array(qs).shape)
         smoothed_qs = [self.gen_smooth_trajectory(np.array(qs)[:,i], 1/dt) for i in range(len(qs[0]))]
@@ -375,11 +375,11 @@ class TrajectoryPlanner:
         '''
         START = time.time()
         profiles = []
-        profiles += [Profile(0, 0, pos_values[0], self.C_smoothness)]
+        profiles += [Profile(0, 0, pos_values[0], self.params, self.C_smoothness)]
 
         # Initialize profile objects + blending
         for i, pos_value in enumerate(pos_values[1:]):
-            profiles += [Profile(i+1, profiles[-1].start_time + profiles[-1].T, pos_value, self.C_smoothness)]
+            profiles += [Profile(i+1, profiles[-1].start_time + profiles[-1].T, pos_value, self.params, self.C_smoothness)]
             if self.blend:
                 blend_profiles(profiles[-2], profiles[-1])
 
@@ -435,7 +435,9 @@ class TrajectoryPlanner:
 
 if __name__=='__main__':
     ## Trajectorty planning testing 
-    planner = TrajectoryPlanner()
+    config = yaml.safe_load(open("configs/config1.yaml", 'r'))
+
+    planner = TrajectoryPlanner(None, config['trajectory_params'])
     planner.gen_smooth_trajectory([1, -1.5, 2, 3, -3.5, 0.3, -1.5, 0.2], 100)
     planner.gen_smooth_trajectory([0.1, 0.06, 0.3, -0.07, -0.01, -0.1, 0.05], 100)
     planner.gen_smooth_trajectory([1, -1, 0.5], 3000)

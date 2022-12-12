@@ -3,7 +3,7 @@ import argparse
 import yaml
 import numpy as np
 import cv2
-from src.cc_model import PCRController
+from src.controllers.cc_controller import PCRController
 
 
 parser = argparse.ArgumentParser()

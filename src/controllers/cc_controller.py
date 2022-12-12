@@ -1,26 +1,31 @@
 import argparse
-import yaml
+import yaml, sys
 
 import numpy as np
 import cv2
 from scipy.optimize import fsolve
 
 if __name__!='__main__':
-    from .math_helper import convert_arc
-    from .trajectory_planner import TrajectoryPlanner
+    from ..math_helper import convert_arc
+    from ..trajectory_planner import TrajectoryPlanner
+    from .PCR_controller import PCRController
 else:
+    sys.path.append('src/')  
     from math_helper import convert_arc
     from trajectory_planner import TrajectoryPlanner
+    from controllers.PCR_controller import PCRController
 
 class Link:
-    def __init__(self, index, length, base_point, exclusion_radius, verbose=False):
+    def __init__(self, index, config, verbose=False):
         self.INDEX = index
-        self.LENGTH = length
-        self.BASE_POINT = np.array(base_point)
-        self.EXCLUSION_RADIUS = exclusion_radius
+        self.LENGTH = config['length']
+        self.BASE_POINT = np.array(config['base_point'])
+        self.EXCLUSION_RADIUS = config['exclusion_radius']
 
-        self.MOTOR_RADIUS = 0.0075
-        self.TENDON_RADIUS = 0.01
+        self.MOTOR_RADIUS = config['motor_radius']
+        self.TENDON_RADIUS = config['tendon_radius']
+
+        self.GEAR_RATIO = config['gear_ratio']
 
         self.end_point = np.array([0, 0])
         self.verbose = verbose
@@ -40,7 +45,7 @@ class Link:
             print(f"Link {self.INDEX} curvature solved to be {ret}")
         return ret[0]
     def _solve_for_q(self):
-        q = [self.k * self.TENDON_RADIUS * self.LENGTH / self.MOTOR_RADIUS, -self.k * self.TENDON_RADIUS * self.LENGTH / self.MOTOR_RADIUS]
+        q = [self.k * self.GEAR_RATIO * self.TENDON_RADIUS * self.LENGTH / self.MOTOR_RADIUS, -self.k * self.GEAR_RATIO * self.TENDON_RADIUS * self.LENGTH / self.MOTOR_RADIUS]
         '''
         K = (q  * r_motor) / (r_tendon * l_arc)
         q = K * r_tendon * l_arc / r_motor  
@@ -81,21 +86,33 @@ class Link:
         thickness = 3
         return [centerCoordinates, radius, angle, startAngle, endAngle, color, thickness]
     def _get_draw_base_params(self, offset_point, scale, radius, color):
-        centerCoordinates = scale*self.BASE_POINT + offset_point
+        centerCoordinates = scale*(self.BASE_POINT + offset_point)
         centerCoordinates = (int(centerCoordinates[0]), int(centerCoordinates[1]))
         return [centerCoordinates, radius, color, -1]
     #endregion 
 
-class CC_Model:
-    def __init__(self, num_links, link_lengths, link_base_points, link_exclusion_radii):
-        self.links = []
-        for i in range(num_links):
-            self.links += [Link(i, link_lengths[i], link_base_points[i], link_exclusion_radii[i])]
-        self.scale = 100 # px/m 
-        self.costmap = self._draw_area((self.scale, self.scale), (self.scale/2, self.scale/2), self.scale)
-        self.trajectory_planner = TrajectoryPlanner()
+class CC_Model(PCRController):
+    def __init__(self, config):
+        PCRController.__init__(self)
 
-        self.trajectory_planner.gen_trajectory(self, self.links[0].end_point, (0.1, -0.1), verbose=True)
+        self.links = []
+        base_point_center = np.array([0., 0.])
+        for i in range(config['num_links']):
+            self.links += [Link(i, config['links'][i])]
+            base_point_center += self.links[-1].BASE_POINT
+            print(self.links[-1].BASE_POINT)
+        base_point_center /= len(self.links)
+
+        self.costmap_area = np.array([0.5, 0.5])
+        self.scale = 100 # px/m 
+        self.costmap_offset_m = np.array([0,0]) # self.costmap_area / 2
+
+        size = self.costmap_area*self.scale
+        self.costmap = self._draw_area(size.astype(int), self.costmap_offset_m, self.scale)
+
+        cv2.imshow('costmap', self.costmap)
+        cv2.waitKey(0)
+
         self.filename = "_model.txt"
         self.log = False
 
@@ -111,6 +128,7 @@ class CC_Model:
             return False
         for link in self.links:
             link.update_end_point(end_point)
+        self.end_point = self.links[0].end_point
         return True
 
     def enable_log(self, filename):
@@ -120,14 +138,6 @@ class CC_Model:
     def disable_log(self):
         self.log = False
     #endregion
-
-    #region planning
-    # def _solve_path(self, goal, noisy=False): 
-    #     return astar(self.costmap, (int((self.links[0].end_point[0]*40)+50), int((self.links[0].end_point[1]*40)+50)), goal)
-    
-
-
-    #endregion
         
     #region drawing
     def _draw_area(self, img_size, offset, scale):
@@ -136,7 +146,8 @@ class CC_Model:
         
         for link in self.links:
             mask = np.zeros(img_size[:2], dtype=np.uint8)
-            center = scale*link.BASE_POINT + offset
+            center = scale*(link.BASE_POINT - offset)
+            print(center, link.BASE_POINT, offset)
             cv2.circle(mask, (int(center[0]), int(center[1])), int(scale*link.LENGTH), (255, 255, 255), -1)
             cv2.circle(mask, (int(center[0]), int(center[1])), int(scale*link.EXCLUSION_RADIUS), (0, 0, 0), -1)
             g_mask = cv2.bitwise_and(g_mask, mask)
@@ -145,11 +156,10 @@ class CC_Model:
         return img
 
     def draw(self):
-        self.offset = self.costmap.shape[0]//2, self.costmap.shape[1] // 2
         img = self.costmap.copy()
 
         for link in self.links:
-            link.draw(img, self.offset, self.scale)
+            link.draw(img, self.costmap_offset_m, self.scale)
             # break
         return img
     #endregion 
@@ -161,4 +171,4 @@ if __name__=='__main__':
 
     config = yaml.safe_load(open(args.config, 'r'))
 
-    controller = CC_Model(**config['controller_params'])
+    controller = CC_Model(config['controller_params'])

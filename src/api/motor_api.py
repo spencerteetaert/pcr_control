@@ -24,7 +24,6 @@ from blmc.controllers import VelocityController
 from blmc.can_helper import start_system, send_mtr_current, stop_system
 
 BITRATE = 1e6
-GEAR_RATIO = 4
 Kp = 3
 Kd = 0
 Ki = 60
@@ -155,10 +154,7 @@ class MotorController:
             vels (list): 4 motor velocity values (rps)
         '''
         if self.enabled:
-            self.vels[0] = vels[0] / GEAR_RATIO
-            self.vels[1] = vels[1] / GEAR_RATIO
-            self.vels[2] = vels[2] / GEAR_RATIO
-            self.vels[3] = vels[3] / GEAR_RATIO
+            self.vels = vels
         else:
             raise AssertionError("Motor is not enabled.")
 

@@ -1,5 +1,24 @@
 controller_params:
   num_links: 2
-  link_lengths: [0.6, 0.6]
-  link_base_points: [[-0.3, -0.1], [0.3, 0.1]]
-  link_exclusion_radii: [0.1, 0.1]
+  links: [
+    {
+      length: 0.8,
+      base_point: [-0.171, -0.187],
+      exclusion_radius: 0.5,
+      motor_radius: 0.009,
+      tendon_radius: 0.011,
+      gear_ratio: 4
+    },
+    {
+      length: 0.8,
+      base_point: [0.662, -0.187],
+      exclusion_radius: 0.5,
+      motor_radius: 0.009,
+      tendon_radius: 0.011,
+      gear_ratio: 4
+    },
+  ]
+trajectory_params: 
+  v_max: 9
+  a_max: 15
+  d_max: 15
