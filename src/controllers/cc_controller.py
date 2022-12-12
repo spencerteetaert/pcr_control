@@ -7,12 +7,10 @@ from scipy.optimize import fsolve
 
 if __name__!='__main__':
     from ..math_helper import convert_arc
-    from ..trajectory_planner import TrajectoryPlanner
     from .PCR_controller import PCRController
 else:
     sys.path.append('src/')  
     from math_helper import convert_arc
-    from trajectory_planner import TrajectoryPlanner
     from controllers.PCR_controller import PCRController
 
 class Link:
@@ -100,18 +98,14 @@ class CC_Model(PCRController):
         for i in range(config['num_links']):
             self.links += [Link(i, config['links'][i])]
             base_point_center += self.links[-1].BASE_POINT
-            print(self.links[-1].BASE_POINT)
         base_point_center /= len(self.links)
 
         self.costmap_area = np.array([0.5, 0.5])
-        self.scale = 100 # px/m 
+        self.scale = 40 # px/m 
         self.costmap_offset_m = np.array([0,0]) # self.costmap_area / 2
 
         size = self.costmap_area*self.scale
         self.costmap = self._draw_area(size.astype(int), self.costmap_offset_m, self.scale)
-
-        cv2.imshow('costmap', self.costmap)
-        cv2.waitKey(0)
 
         self.filename = "_model.txt"
         self.log = False
@@ -147,7 +141,6 @@ class CC_Model(PCRController):
         for link in self.links:
             mask = np.zeros(img_size[:2], dtype=np.uint8)
             center = scale*(link.BASE_POINT - offset)
-            print(center, link.BASE_POINT, offset)
             cv2.circle(mask, (int(center[0]), int(center[1])), int(scale*link.LENGTH), (255, 255, 255), -1)
             cv2.circle(mask, (int(center[0]), int(center[1])), int(scale*link.EXCLUSION_RADIUS), (0, 0, 0), -1)
             g_mask = cv2.bitwise_and(g_mask, mask)

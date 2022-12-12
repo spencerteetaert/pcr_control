@@ -29,7 +29,8 @@ Kd = 0
 Ki = 60
 
 MAX_SPEED = 2
-HOLDING_CURRENT = 0.1
+HOLDING_CURRENT = 0.01
+MAX_CURRENT = 5
 
 class MotorController:
     def __init__(self, auto_tension=True, log_rate=100):
@@ -40,7 +41,8 @@ class MotorController:
         '''
         self.mtr_datas = [MotorData(), MotorData()]
         self.adcs = [AdcResult(), AdcResult()]
-        self.busses = [can.interface.Bus('can0', bitrate=BITRATE), can.interface.Bus('can1', bitrate=BITRATE)]
+        self.busses = [can.ThreadSafeBus('can0', bitrate=BITRATE), can.ThreadSafeBus('can1', bitrate=BITRATE)]
+
         self.vels = [0,0,0,0]
         self.enabled = False
         self.auto_tension = auto_tension
@@ -90,6 +92,10 @@ class MotorController:
         Enables microcontrollers and starts canbus message handling threads
         '''
         print("Enabling motors...")
+
+        self.busses[0].flush_tx_buffer()
+        self.busses[1].flush_tx_buffer()
+
         start_system(self.busses[0], self.mtr_datas[0], False)
         start_system(self.busses[1], self.mtr_datas[1], False)
 
@@ -103,6 +109,9 @@ class MotorController:
         Disables microcontrollers and stops canbus message handling threads
         '''
         print("Disabling motors...")
+        self.busses[0].flush_tx_buffer()
+        self.busses[1].flush_tx_buffer()
+        
         stop_system(self.busses[0])
         stop_system(self.busses[1])
 
@@ -111,6 +120,9 @@ class MotorController:
 
         self.t0.join()
         self.t1.join()
+        
+        self.busses[0].shutdown()
+        self.busses[1].shutdown()
 
     def get_sensor_data(self):
         return None
@@ -151,6 +163,18 @@ class MotorController:
         Sets reference velocities for each of 4 motors
 
         Args: 
+            vels (list): 2 tendon velocity values for positive curvature tendon (left tendon)
+        '''
+        if self.enabled:
+            self._set_velocity([vels[0], vels[0], vels[1], vels[1]])
+        else:
+            raise AssertionError("Motor is not enabled.")
+
+    def _set_velocity(self, vels):
+        '''
+        Sets reference velocities for each of 4 motors
+
+        Args: 
             vels (list): 4 motor velocity values (rps)
         '''
         if self.enabled:
@@ -170,18 +194,40 @@ class MotorController:
             sys.exit(0)
 
         if self.mtr_datas[board_idx].status.mtr1_ready and self.mtr_datas[board_idx].status.mtr2_ready:
-            self.vctrl[motor_idx[0]].update_data(self.mtr_datas[board_idx].mtr1)
-            self.vctrl[motor_idx[1]].update_data(self.mtr_datas[board_idx].mtr2)
-            
-            self.vctrl[motor_idx[0]].run(self.vels[motor_idx[0]])
-            self.vctrl[motor_idx[1]].run(self.vels[motor_idx[1]])
+            i_m0 = 0 
+            i_m1 = 0
 
-            if self.auto_tension:
-                i_m0 = max(self.vctrl[motor_idx[0]].iqref, HOLDING_CURRENT)
-                i_m1 = min(self.vctrl[motor_idx[1]].iqref, -HOLDING_CURRENT)
-            else:
-                i_m0 = self.vctrl[motor_idx[0]].iqref # right motor, pos on left bend, neg on right 
-                i_m1 = self.vctrl[motor_idx[1]].iqref # left motor, pos on right bend, neg on left 
+            if self.vels[motor_idx[0]] > 0: # Actively driven 
+                self.vctrl[motor_idx[0]].update_data(self.mtr_datas[board_idx].mtr1)
+                self.vctrl[motor_idx[0]].run(self.vels[motor_idx[0]])
+
+                if self.auto_tension:
+                    i_m0 = max(self.vctrl[motor_idx[0]].iqref, HOLDING_CURRENT)
+                    i_m1 = -HOLDING_CURRENT
+                else:
+                    i_m0 = self.vctrl[motor_idx[0]].iqref # right motor, pos on left bend, neg on right 
+                    i_m1 = 0 # left motor, pos on right bend, neg on left 
+            
+            elif self.vels[motor_idx[1]] < 0: # Actively driven 
+                self.vctrl[motor_idx[1]].update_data(self.mtr_datas[board_idx].mtr2)
+                self.vctrl[motor_idx[1]].run(self.vels[motor_idx[1]])
+
+                if self.auto_tension:
+                    i_m0 = HOLDING_CURRENT
+                    i_m1 = min(self.vctrl[motor_idx[1]].iqref, -HOLDING_CURRENT)
+                else:
+                    i_m0 = 0 # right motor, pos on left bend, neg on right 
+                    i_m1 = self.vctrl[motor_idx[1]].iqref # left motor, po
+
+                # if self.auto_tension:
+                #     i_m0 = max(self.vctrl[motor_idx[0]].iqref, HOLDING_CURRENT)
+                #     i_m1 = min(self.vctrl[motor_idx[1]].iqref, -HOLDING_CURRENT)
+                # else:
+                #     i_m0 = self.vctrl[motor_idx[0]].iqref # right motor, pos on left bend, neg on right 
+                #     i_m1 = self.vctrl[motor_idx[1]].iqref # left motor, pos on right bend, neg on left 
+
+            i_m0 = min(MAX_CURRENT, i_m0)
+            i_m1 = max(-MAX_CURRENT, i_m1)
 
             send_mtr_current(self.busses[board_idx], i_m0, i_m1)
             self.log(board_idx, i_m0, i_m1)
