@@ -44,6 +44,7 @@ class MotorController:
         self.busses = [can.ThreadSafeBus('can0', bitrate=BITRATE), can.ThreadSafeBus('can1', bitrate=BITRATE)]
 
         self.vels = [0,0,0,0]
+        self.manual_override = False
         self.enabled = False
         self.auto_tension = auto_tension
         self.file = None
@@ -167,6 +168,7 @@ class MotorController:
         '''
         if self.enabled:
             self._set_velocity([vels[0], vels[0], vels[1], vels[1]])
+            self.manual_override = False
         else:
             raise AssertionError("Motor is not enabled.")
 
@@ -179,6 +181,7 @@ class MotorController:
         '''
         if self.enabled:
             self.vels = vels
+            self.manual_override = True
         else:
             raise AssertionError("Motor is not enabled.")
 
@@ -197,34 +200,41 @@ class MotorController:
             i_m0 = 0 
             i_m1 = 0
 
-            if self.vels[motor_idx[0]] > 0: # Actively driven 
-                self.vctrl[motor_idx[0]].update_data(self.mtr_datas[board_idx].mtr1)
-                self.vctrl[motor_idx[0]].run(self.vels[motor_idx[0]])
+            if not self.manual_override:
+                if self.vels[motor_idx[0]] > 0: # Actively driven 
+                    self.vctrl[motor_idx[0]].update_data(self.mtr_datas[board_idx].mtr1)
+                    self.vctrl[motor_idx[0]].run(self.vels[motor_idx[0]])
 
-                if self.auto_tension:
-                    i_m0 = max(self.vctrl[motor_idx[0]].iqref, HOLDING_CURRENT)
-                    i_m1 = -HOLDING_CURRENT
-                else:
-                    i_m0 = self.vctrl[motor_idx[0]].iqref # right motor, pos on left bend, neg on right 
-                    i_m1 = 0 # left motor, pos on right bend, neg on left 
-            
-            elif self.vels[motor_idx[1]] < 0: # Actively driven 
+                    if self.auto_tension:
+                        i_m0 = max(self.vctrl[motor_idx[0]].iqref, HOLDING_CURRENT)
+                        i_m1 = -HOLDING_CURRENT
+                    else:
+                        i_m0 = self.vctrl[motor_idx[0]].iqref # right motor, pos on left bend, neg on right 
+                        i_m1 = 0 # left motor, pos on right bend, neg on left 
+                
+                elif self.vels[motor_idx[1]] < 0: # Actively driven 
+                    self.vctrl[motor_idx[1]].update_data(self.mtr_datas[board_idx].mtr2)
+                    self.vctrl[motor_idx[1]].run(self.vels[motor_idx[1]])
+
+                    if self.auto_tension:
+                        i_m0 = HOLDING_CURRENT
+                        i_m1 = min(self.vctrl[motor_idx[1]].iqref, -HOLDING_CURRENT)
+                    else:
+                        i_m0 = 0 # right motor, pos on left bend, neg on right 
+                        i_m1 = self.vctrl[motor_idx[1]].iqref # left motor, po
+
+            else:
+                self.vctrl[motor_idx[0]].update_data(self.mtr_datas[board_idx].mtr1)
                 self.vctrl[motor_idx[1]].update_data(self.mtr_datas[board_idx].mtr2)
+                self.vctrl[motor_idx[0]].run(self.vels[motor_idx[0]])
                 self.vctrl[motor_idx[1]].run(self.vels[motor_idx[1]])
 
                 if self.auto_tension:
-                    i_m0 = HOLDING_CURRENT
+                    i_m0 = max(self.vctrl[motor_idx[0]].iqref, HOLDING_CURRENT)
                     i_m1 = min(self.vctrl[motor_idx[1]].iqref, -HOLDING_CURRENT)
                 else:
-                    i_m0 = 0 # right motor, pos on left bend, neg on right 
-                    i_m1 = self.vctrl[motor_idx[1]].iqref # left motor, po
-
-                # if self.auto_tension:
-                #     i_m0 = max(self.vctrl[motor_idx[0]].iqref, HOLDING_CURRENT)
-                #     i_m1 = min(self.vctrl[motor_idx[1]].iqref, -HOLDING_CURRENT)
-                # else:
-                #     i_m0 = self.vctrl[motor_idx[0]].iqref # right motor, pos on left bend, neg on right 
-                #     i_m1 = self.vctrl[motor_idx[1]].iqref # left motor, pos on right bend, neg on left 
+                    i_m0 = self.vctrl[motor_idx[0]].iqref # right motor, pos on left bend, neg on right 
+                    i_m1 = self.vctrl[motor_idx[1]].iqref # left motor, pos on right bend, neg on left 
 
             i_m0 = min(MAX_CURRENT, i_m0)
             i_m1 = max(-MAX_CURRENT, i_m1)
