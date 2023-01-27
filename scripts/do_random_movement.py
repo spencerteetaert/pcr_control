@@ -3,6 +3,7 @@ sys.path.append('.')
 import time
 
 import yaml
+import cv2
 
 from src.data_generation.generate_movement import get_random_end_point
 from src.controllers.cc_controller import CC_Model
@@ -16,7 +17,7 @@ if __name__=='__main__':
     model = CC_Model(config['controller_params'])
 
     controller = MotorController()
-    aurora = AuroraAPI(verbose=True)
+    aurora = AuroraAPI(verbose=False)
 
     controller.enable()
     aurora.start_tracking()
@@ -25,14 +26,20 @@ if __name__=='__main__':
     print("POSITION", aurora.get_position()[:2])
     print("End point updated:", model.update_end_point(aurora.get_position()[:2]))
     print("Controller position updated.", model.end_point)
-    input("Press enter to continue")
+    # input("1: Press enter to continue")
+
+    time.sleep(3)
+
+    # input("1.5: Press enter to continue")
     planner = TrajectoryPlanner(model, config['trajectory_params'])
 
+    # input("1.6: Press enter to continue")
+
     dt = 0.001
-    qs = planner.gen_trajectory(get_random_end_point(model), dt=dt, add_noise=True, verbose=True)
+    qs = planner.gen_trajectory(get_random_end_point(model), dt=dt, add_noise=False, verbose=False)
 
     print("Trajectory generated.")
-    input("Press enter to continue")
+    # input("2: Press enter to continue")
 
     # aurora.enable_log()
     # controller.enable_log()
@@ -40,7 +47,9 @@ if __name__=='__main__':
     start_time = time.time()
     i = 0
     while time.time() - start_time < len(qs[0]) * dt:
-        print(qs[0][i], i*dt - (time.time() - start_time))
+        model.update_qs([qs[0][i], qs[2][i]])
+        img = model.draw()
+        cv2.imshow('Controller', img)
 
         i += 1
         time.sleep(max(0, i*dt - (time.time() - start_time)))

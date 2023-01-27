@@ -105,12 +105,12 @@ class AuroraAPI:
         return self.sensor_data
 
     def get_position(self):
-        '''Returns position in robot frame 
+        '''Returns position in robot frame (m)
         '''
         if not self.calibrated:
             print("ERROR: Aurora is not calibrated to workspace. Unable to provide position.")
             return None
-        return self.norm_rotation @ (self.sensor_data[0][1] + self.norm_translation)
+        return (self.norm_rotation @ (self.sensor_data[0][1] + self.norm_translation)) / 1000
 
     def enable_log(self, filename):
         self.file = open(filename + "_aurora.txt", 'a')

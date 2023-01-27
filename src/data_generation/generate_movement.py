@@ -13,11 +13,9 @@ def get_random_end_point(controller):
     selection_map = cv2.circle(selection_map, end_point_px.astype(int), int(MIN_DISTANCE*controller.scale), (0, 0, 0), -1)
     
     mask = np.argwhere(selection_map == 255)
-    cv2.imshow('selection_map', selection_map)
-    cv2.waitKey(0)
+    # cv2.imshow('selection_map', selection_map)
+    # cv2.waitKey(0)
     i = random.randint(0, len(mask)-1)
-
-    
 
     return (mask[i][::-1] / controller.scale) + controller.costmap_offset_m
 

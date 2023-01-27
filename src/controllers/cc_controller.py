@@ -45,15 +45,29 @@ class Link:
     def _solve_for_q(self):
         q = [self.k * self.GEAR_RATIO * self.TENDON_RADIUS * self.LENGTH / self.MOTOR_RADIUS, -self.k * self.GEAR_RATIO * self.TENDON_RADIUS * self.LENGTH / self.MOTOR_RADIUS]
         '''
-        K = (q  * r_motor) / (r_tendon * l_arc)
-        q = K * r_tendon * l_arc / r_motor  
+        q is in rad in motor frame 
         '''
         self.dq = [q[0] - self.q[0], q[1] - self.q[1] ]
         return q
 
     def _check_end_point(self, end_point):
         # Checks bounds of end_point to ensure solution exists
-        return np.linalg.norm(self.BASE_POINT - end_point) < self.LENGTH and not np.linalg.norm(self.BASE_POINT - end_point) < self.EXCLUSION_RADIUS
+        ret = np.linalg.norm(self.BASE_POINT - end_point) < self.LENGTH and not np.linalg.norm(self.BASE_POINT - end_point) < self.EXCLUSION_RADIUS
+
+        if ret: 
+            return ret
+        
+        elif np.linalg.norm(self.BASE_POINT - end_point) >= self.LENGTH:
+            print("End point longer than arms.", np.linalg.norm(self.BASE_POINT - end_point))
+        elif np.linalg.norm(self.BASE_POINT - end_point) <= self.EXCLUSION_RADIUS:
+            print("End point inside exclusion zone.", np.linalg.norm(self.BASE_POINT - end_point))
+
+        print("Base position:", self.BASE_POINT)
+        print("End effector position:", end_point)
+        print("Length:", self.LENGTH)
+        print("Exclusion:", self.EXCLUSION_RADIUS)
+
+        return ret
 
     def update_end_point(self, end_point):
         if not self._check_end_point(end_point):
@@ -124,6 +138,26 @@ class CC_Model(PCRController):
             link.update_end_point(end_point)
         self.end_point = self.links[0].end_point
         return True
+
+    def update_qs(self, dqs):
+        ks = []
+        mags = []
+
+        for i in range(len(self.links)):
+            self.links[i].q = [self.links[i].q[0] + dqs[i], self.links[i].q[1] - dqs[i]] #TODO: Fix 
+            ks += [self.links[i].q[0] * self.links[i].MOTOR_RADIUS / (self.links[i].GEAR_RATIO*self.links[i].LENGTH*self.links[i].TENDON_RADIUS)]
+            mags += [2/ks[-1] * np.sin(self.links[i].LENGTH*ks[-1]/2)]
+
+        d = np.linalg.norm(self.links[0].BASE_POINT - self.links[1].BASE_POINT)
+        a = (self.links[0].LENGTH**2 - self.links[1].LENGTH**2) / (2*d)
+        h = (self.links[0].LENGTH**2 - a**2)**0.5
+        x5 = self.links[0].BASE_POINT[0] + a*(self.links[0].BASE_POINT[0] - self.links[1].BASE_POINT[0])/d
+        y5 = self.links[0].BASE_POINT[1] + a*(self.links[0].BASE_POINT[1] - self.links[1].BASE_POINT[1])/d
+
+        x = x5 + h*(self.links[1].BASE_POINT[1] - self.links[0].BASE_POINT[1]) / d
+        y = y5 + h*(self.links[1].BASE_POINT[0] - self.links[0].BASE_POINT[0]) / d
+
+        self.update_end_point([x, y])
 
     def enable_log(self, filename):
         self.filename = filename + "_model.txt"
