@@ -293,7 +293,7 @@ class TrajectoryPlanner:
         assert C_smoothness > 1 and C_smoothness < 12, "C_smoothness only support between 2 and 11"
         self.C_smoothness = 4
         self.blend = True
-        self.controller = PCR_controller
+        self.model = PCR_controller
 
         self.params = trajector_params
 
@@ -310,9 +310,10 @@ class TrajectoryPlanner:
         Returns: 
             nx4 list containing discrete velocity commands for each motor, each dt time apart
         '''
-        costmap = self.controller.costmap
-        start_pt_px = (np.array(self.controller.end_point)*self.controller.scale).astype(int)
-        end_pt_px = (np.array(target_pt)*self.controller.scale).astype(int)
+        costmap = self.model.costmap
+        start_pt_px = (np.array(self.model.end_point)*self.model.scale).astype(int)
+        end_pt_px = (np.array(target_pt)*self.model.scale).astype(int)
+
 
         # Path planning testing 
         if add_noise:
@@ -324,6 +325,7 @@ class TrajectoryPlanner:
         if not len(path):
             print("Trajectory generation failed.")
             return []
+        
 
         if verbose:
             disp_image = np.zeros((*costmap.shape, 3)).astype(np.uint8)
@@ -346,12 +348,13 @@ class TrajectoryPlanner:
         3) generate and return smooth tendon displacement profile 
         '''
 
-        path = [item / self.controller.scale + self.controller.costmap_offset_m for item in path]
+        path = [item / self.model.scale + self.model.costmap_offset_m for item in path]
         qs = [] # rad
+
         for item in path: 
-            if not self.controller.update_end_point(item):
+            if not self.model.update_end_point(item):
                 print("Unable to set link to point", item)
-            qs += [np.array([link.dq for link in self.controller.links]).flatten().tolist()]
+            qs += [np.array([link.dq for link in self.model.links]).flatten().tolist()]
 
         smoothed_qs = [self.gen_smooth_trajectory(np.array(qs)[:,i], 1/dt, verbose=verbose) for i in range(len(qs[0]))]
 
@@ -398,6 +401,7 @@ class TrajectoryPlanner:
         profile_output_v = []
         index = 0
         for t in command_times:
+            time.sleep(0.00008) # ERROR: FOR THE LOVE OF GOD WHY???????!?!??!???!?!??!??!? WTF???!??!?!
             if t > boundaries[index]:
                 index += 1
             profile_output_v += [profiles[index].v(t)]

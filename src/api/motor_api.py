@@ -18,19 +18,24 @@ import signal
 
 import can
 can.rc['interface'] = 'socketcan'
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation 
+plt.style.use('fivethirtyeight')
 
 from blmc.motor_data import MotorData, AdcResult, MessageHandler, ArbitrationIds
-from blmc.controllers import VelocityController
+from blmc.controllers import PositionController
 from blmc.can_helper import start_system, send_mtr_current, stop_system
 
 BITRATE = 1e6
-Kp = 3
-Kd = 0
-Ki = 60
+Kp = 20
+Kd = 0.2
+Ki = 10
 
 MAX_SPEED = 2
-HOLDING_CURRENT = 0.01
+HOLDING_CURRENT = -0.2
 MAX_CURRENT = 2.5
+
+SHOW_CURRENT = False
 
 class MotorController:
     def __init__(self, auto_tension=True, log_rate=100):
@@ -55,16 +60,17 @@ class MotorController:
         print("Setup controller with Kp = {}, Ki = {} Kd = {}".format(Kp, Ki, Kd))
         print("Max speed: {}".format(MAX_SPEED))
         self.vctrl = [
-            VelocityController(self.busses[0], Kp, Ki, Kd), 
-            VelocityController(self.busses[0], Kp, Ki, Kd)
+            # VelocityController(self.busses[0], Kp, 0, Kd), 
+            PositionController(Kp, Ki, Kd), 
+            PositionController(Kp, Ki, Kd)
         ]
 
         self.msg_handlers = [MessageHandler(), MessageHandler()]
 
         self.msg_handlers[0].set_id_handler(ArbitrationIds.status, self.mtr_datas[0].set_status)
         self.msg_handlers[0].set_id_handler(ArbitrationIds.current, self.mtr_datas[0].set_current)
-        self.msg_handlers[0].set_id_handler(ArbitrationIds.position, self.mtr_datas[0].set_position)
-        self.msg_handlers[0].set_id_handler(ArbitrationIds.velocity, partial(self._on_velocity_msg, motor_idx=[0, 1]))
+        self.msg_handlers[0].set_id_handler(ArbitrationIds.position, partial(self._on_position_msg, motor_idx=[0, 1]))
+        self.msg_handlers[0].set_id_handler(ArbitrationIds.velocity, self.mtr_datas[0].set_velocity)
         self.msg_handlers[0].set_id_handler(ArbitrationIds.adc6, self.adcs[0].set_values)
 
         self.handler0 = CanHandler(0, self.busses[0], self.msg_handlers[0])
@@ -76,6 +82,17 @@ class MotorController:
             self.disable()
             sys.exit(0)
         signal.signal(signal.SIGINT, sigint_handler)
+
+        if SHOW_CURRENT:
+            self.current_readings = []
+            self.tension_markers = []
+
+            self.fig = plt.figure()
+            self.ax = self.fig.add_subplot(1, 1, 1)
+            self.xs = list(range(20))
+
+            self.ani = animation.FuncAnimation(self.fig, self.update_current_graph, interval=100)
+            # plt.show()
 
     def enable(self):
         '''
@@ -137,12 +154,12 @@ class MotorController:
             file.write(f"{timestep},{i1},{i2},{self.vels[0+2*board]},{self.vels[1+2*board]},{self.mtr_datas[board].mtr1.current.value},{self.mtr_datas[board].mtr2.current.value},{self.mtr_datas[board].mtr1.position.value},{self.mtr_datas[board].mtr2.position.value},{self.mtr_datas[board].mtr1.velocity.value},{self.mtr_datas[board].mtr2.velocity.value}\n")
 
 
-    def set_velocity(self, vels):
+    def set_position(self, vels):
         '''
         Sets reference velocities for each of 4 motors
 
         Args: 
-            vels (list): 2 tendon velocity values for positive curvature tendon (left tendon)
+            vels (list): 2 tendon position values for positive curvature tendon (left tendon)
         '''
         if self.enabled:
             self.vels = vels
@@ -150,14 +167,14 @@ class MotorController:
         else:
             raise AssertionError("Motor is not enabled.")
 
-    def _set_velocity(self, vels):
+    def _set_position(self, vels):
         '''
         Sets reference velocities for each of 4 motors
 
         Left as a legacy 
 
         Args: 
-            vels (list): 4 motor velocity values (rps)
+            vels (list): 4 motor position values (rps)
         '''
         if self.enabled:
             self.vels = vels
@@ -165,16 +182,23 @@ class MotorController:
         else:
             raise AssertionError("Motor is not enabled.")
 
-    def _on_velocity_msg(self, msg, motor_idx):
+    def update_current_graph(self, i):
+        self.current_readings += [[self.mtr_datas[0].mtr1.current.value, self.mtr_datas[0].mtr2.current.value]]
+        self.current_readings = self.current_readings[-20:]
+
+        self.ax.clear()
+        self.ax.plot(self.xs[:len(self.current_readings)], self.current_readings)
+
+    def _on_position_msg(self, msg, motor_idx):
         board_idx = motor_idx[0] // 2
 
-        self.mtr_datas[board_idx].set_velocity(msg)
+        self.mtr_datas[board_idx].set_position(msg)
 
-        # emergency break
-        if self.mtr_datas[board_idx].mtr1.velocity.value > MAX_SPEED * 3 or self.mtr_datas[board_idx].mtr2.velocity.value > MAX_SPEED * 3:
-            self.disable()
-            print("Too fast! EMERGENCY BREAK!")
-            sys.exit(0)
+        # # emergency break
+        # if self.mtr_datas[board_idx].mtr1.position.value > MAX_SPEED * 3 or self.mtr_datas[board_idx].mtr2.position.value > MAX_SPEED * 3:
+        #     self.disable()
+        #     print("Too fast! EMERGENCY BREAK!")
+        #     sys.exit(0)
 
         if self.mtr_datas[board_idx].status.mtr1_ready and self.mtr_datas[board_idx].status.mtr2_ready:
             i_m0 = 0 
@@ -187,13 +211,19 @@ class MotorController:
 
             if self.auto_tension:
                 i_m0 = max(self.vctrl[motor_idx[0]].iqref, HOLDING_CURRENT)
-                i_m1 = min(self.vctrl[motor_idx[1]].iqref, -HOLDING_CURRENT)
+                i_m1 = max(self.vctrl[motor_idx[1]].iqref, HOLDING_CURRENT)
             else:
                 i_m0 = self.vctrl[motor_idx[0]].iqref # right motor, pos on left bend, neg on right 
                 i_m1 = self.vctrl[motor_idx[1]].iqref # left motor, pos on right bend, neg on left 
 
-            i_m0 = min(MAX_CURRENT, i_m0)
-            i_m1 = max(-MAX_CURRENT, i_m1)
+            i_m0 = max(-MAX_CURRENT, min(MAX_CURRENT, i_m0)) # if self.vels[motor_idx[1]] < 0 else 0
+            i_m1 = max(-MAX_CURRENT, min(MAX_CURRENT, i_m1))
+
+            # factor = min(1.2, (52 - self.mtr_datas[0].mtr2.position.value)*1.2/52)
+            # i_m0 = factor if self.vels[motor_idx[1]] < 0 else 0
+            # print(i_m0, i_m1)
+            # print(self.mtr_datas[0].mtr1.position.value, self.mtr_datas[0].mtr2.position.value)
+
 
             send_mtr_current(self.busses[board_idx], i_m0, i_m1)
             self.log(board_idx, i_m0, i_m1)
