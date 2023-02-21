@@ -10,11 +10,12 @@ from src.api.motor_api import MotorController
 # from src.api.aurora_api import AuroraAPI
 from blmc.pid import PID
 
-CONTROL_TYPE = 'pos'
+CONTROL_TYPE = 'vel'
 
 api = MotorController(type = CONTROL_TYPE, auto_tension = False)
 time.sleep(2)
 api.enable()
+time.sleep(1)
 print("API enabled.")
 ref = [0, 0]
 
@@ -33,13 +34,13 @@ def on_press(key):
         api.auto_tension = not api.auto_tension
         print("Auto tension:", api.auto_tension)
     elif key == keyboard.KeyCode.from_char('a'):
-        ref[i1] += step
-    elif key == keyboard.KeyCode.from_char('q'):
         ref[i1] -= step
+    elif key == keyboard.KeyCode.from_char('q'):
+        ref[i1] += step
     elif key == keyboard.KeyCode.from_char('w'):
-        ref[i2] -= step
-    elif key == keyboard.KeyCode.from_char('s'):
         ref[i2] += step
+    elif key == keyboard.KeyCode.from_char('s'):
+        ref[i2] -= step
 
     else:
         if abs(ref[0]) > 0.03:
