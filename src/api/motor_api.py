@@ -49,7 +49,7 @@ class MotorController:
         assert self.type in ['pos', 'vel'], 'Invalid control type.'
 
         self.vels = [0,0]
-        self.pos = [0,0]
+        self.pos = None
         self.manual_override = False
         self.enabled = False
         self.auto_tension = auto_tension
@@ -171,7 +171,7 @@ class MotorController:
         Sets reference velocities for each of 4 motors
 
         Args: 
-            pos (list): 2 tendon position values for positive curvature tendon (left tendon)
+            pos (list): 2 tendon position values for positive curvature tendon
         '''
         if self.enabled:
             if self.type == 'pos':
@@ -184,7 +184,7 @@ class MotorController:
     def _on_position_msg(self, msg):
         self.mtr_data.set_position(msg)
 
-        if self.mtr_data.status.mtr1_ready and self.mtr_data.status.mtr2_ready:
+        if self.mtr_data.status.mtr1_ready and self.mtr_data.status.mtr2_ready and self.pos is not None:
             i_m0 = 0 
             i_m1 = 0
 
