@@ -36,7 +36,7 @@ MAX_CURRENT = 2.5
 SHOW_CURRENT = False
 
 class MotorController:
-    def __init__(self, type='vel', auto_tension=True, log_rate=100):
+    def __init__(self, type='vel', auto_tension=False, log_rate=100):
         '''
         Args: 
             auto_tension (bool): whether to enact a minimum holding current in motors
@@ -48,7 +48,7 @@ class MotorController:
         self.type = type
         assert self.type in ['pos', 'vel'], 'Invalid control type.'
 
-        self.vels = [0,0]
+        self.vels = None
         self.pos = None
         self.manual_override = False
         self.enabled = False
@@ -57,23 +57,29 @@ class MotorController:
         self.log_flag = False
         self.log_rate = log_rate
         self.last_log_timestep = time.time()
+        self.recover = False
 
-        if self.type == 'pos':
-            Kp = 20
-            Kd = 0.2
-            Ki = 10
-            self.pctrl = [
-                PositionController(Kp, Ki, Kd), 
-                PositionController(Kp, Ki, Kd)
-            ]
-        elif self.type == 'vel':
-            Kp = 3
-            Kd = 0
-            Ki = 60
-            self.vctrl = [
-                VelocityController(self.bus, Kp, Ki, Kd), 
-                VelocityController(self.bus, Kp, Ki, Kd)
-            ]
+        Kp = 20
+        Kd = 0.2
+        Ki = 10
+        self.pctrl = [
+            PositionController(Kp, Ki, Kd), 
+            PositionController(Kp, Ki, Kd)
+        ]
+        Kp = 0.05
+        Kd = 0.1
+        Ki = 0.005
+        self.pctrl_recovery = [
+            PositionController(Kp, Ki, Kd), 
+            PositionController(Kp, Ki, Kd)
+        ]
+        Kp = 3
+        Kd = 0
+        Ki = 60
+        self.vctrl = [
+            VelocityController(self.bus, Kp, Ki, Kd), 
+            VelocityController(self.bus, Kp, Ki, Kd)
+        ]
 
         print("Setup controller with Kp = {}, Ki = {} Kd = {}".format(Kp, Ki, Kd))
         print("Max speed: {}".format(MAX_SPEED))
@@ -83,12 +89,8 @@ class MotorController:
         self.msg_handler.set_id_handler(ArbitrationIds.status, self.mtr_data.set_status)
         self.msg_handler.set_id_handler(ArbitrationIds.current, self.mtr_data.set_current)
 
-        if self.type == 'pos':
-            self.msg_handler.set_id_handler(ArbitrationIds.position, self._on_position_msg)
-            self.msg_handler.set_id_handler(ArbitrationIds.velocity, self.mtr_data.set_velocity)
-        elif self.type == 'vel':
-            self.msg_handler.set_id_handler(ArbitrationIds.position, self.mtr_data.set_position)
-            self.msg_handler.set_id_handler(ArbitrationIds.velocity, self._on_velocity_msg)
+        self.msg_handler.set_id_handler(ArbitrationIds.position, self._position_msg_switch)
+        self.msg_handler.set_id_handler(ArbitrationIds.velocity, self._velocity_msg_switch)
 
         self.msg_handler.set_id_handler(ArbitrationIds.adc6, self.adc.set_values)
 
@@ -113,10 +115,20 @@ class MotorController:
             self.ani = animation.FuncAnimation(self.fig, self.update_current_graph, interval=100)
             # plt.show()
 
+    def reset_pid(self, recovery=False):
+        self.vctrl[0]._pid.Initialize()
+        self.vctrl[1]._pid.Initialize()
+        self.pctrl[0]._pid.Initialize()
+        self.pctrl[1]._pid.Initialize()
+        self.pctrl_recovery[0]._pid.Initialize()
+        self.pctrl_recovery[1]._pid.Initialize()
+        self.recover = recovery
+
     def enable(self):
         '''Enables microcontrollers and starts canbus message handling threads
         '''
         print("Enabling motors...")
+        
         self.bus.flush_tx_buffer()
         start_system(self.bus, self.mtr_data, False)
         self.thread.start()
@@ -126,6 +138,7 @@ class MotorController:
         '''Disables microcontrollers and stops canbus message handling threads
         '''
         print("Disabling motors...")
+        self.disable_log()
         self.bus.flush_tx_buffer()
         stop_system(self.bus)
         self.handler.kill = True
@@ -138,7 +151,7 @@ class MotorController:
     
     #region Logging 
     def enable_log(self, filename):
-        self.file = open(filename + "_motor0.txt", 'a')
+        self.file = open(filename + "_motor.txt", 'a')
         self.file.write('time,command_i1,command_i2,set_v1,set_v2,i1,i2,pos1,pos2,vel1,vel2\n')
         self.log_flag = True
 
@@ -173,75 +186,89 @@ class MotorController:
         Args: 
             pos (list): 2 tendon position values for positive curvature tendon
         '''
-        if self.enabled:
-            if self.type == 'pos':
-                self.pos = ref
-            elif self.type == 'vel':
-                self.vels = ref
+        if self.type == 'pos':
+            self.pos = ref
+        elif self.type == 'vel':
+            self.vels = ref
+
+    def _position_msg_switch(self, msg):
+        if self.type == 'pos':
+            self._on_position_msg(msg)
         else:
-            raise AssertionError("Motor is not enabled.")
+            self.mtr_data.set_position(msg)
+    def _velocity_msg_switch(self, msg):
+        if self.type == 'vel':
+            self._on_velocity_msg(msg)
+        else:
+            self.mtr_data.set_velocity(msg)
 
     def _on_position_msg(self, msg):
-        self.mtr_data.set_position(msg)
-
-        if self.mtr_data.status.mtr1_ready and self.mtr_data.status.mtr2_ready and self.pos is not None:
-            i_m0 = 0 
-            i_m1 = 0
-
-            self.pctrl[0].update_data(self.mtr_data.mtr1)
-            self.pctrl[1].update_data(self.mtr_data.mtr2)
-            self.pctrl[0].run(self.pos[0])
-            self.pctrl[1].run(self.pos[1])
-
-            if self.auto_tension:
-                i_m0 = max(self.pctrl[0].iqref, HOLDING_CURRENT)
-                i_m1 = max(self.pctrl[1].iqref, HOLDING_CURRENT)
+        if self.enabled:
+            if self.recover:
+                ctrl = self.pctrl_recovery
             else:
-                i_m0 = self.pctrl[0].iqref # right motor, pos on left bend, neg on right 
-                i_m1 = self.pctrl[1].iqref # left motor, pos on right bend, neg on left 
+                ctrl = self.pctrl
+            self.mtr_data.set_position(msg)
 
-            i_m0 = max(-MAX_CURRENT, min(MAX_CURRENT, i_m0))
-            i_m1 = max(-MAX_CURRENT, min(MAX_CURRENT, i_m1))
+            if self.mtr_data.status.mtr1_ready and self.mtr_data.status.mtr2_ready and self.pos is not None:
+                i_m0 = 0 
+                i_m1 = 0
 
-            send_mtr_current(self.bus, i_m0, i_m1)
-            self.log(i_m0, i_m1)
-        else:
-            send_mtr_current(self.bus, 0, 0)
-            self.log(0, 0)
+                ctrl[0].update_data(self.mtr_data.mtr1)
+                ctrl[1].update_data(self.mtr_data.mtr2)
+                ctrl[0].run(self.pos[0])
+                ctrl[1].run(self.pos[1])
+
+                if self.auto_tension:
+                    i_m0 = max(ctrl[0].iqref, HOLDING_CURRENT)
+                    i_m1 = max(ctrl[1].iqref, HOLDING_CURRENT)
+                else:
+                    i_m0 = ctrl[0].iqref # right motor, pos on left bend, neg on right 
+                    i_m1 = ctrl[1].iqref # left motor, pos on right bend, neg on left 
+
+                i_m0 = max(-MAX_CURRENT, min(MAX_CURRENT, i_m0))
+                i_m1 = max(-MAX_CURRENT, min(MAX_CURRENT, i_m1))
+
+                send_mtr_current(self.bus, i_m0, i_m1)
+                self.log(i_m0, i_m1)
+            else:
+                send_mtr_current(self.bus, 0, 0)
+                self.log(0, 0)
     
     def _on_velocity_msg(self, msg):
-        self.mtr_data.set_velocity(msg)
+        if self.enabled:
+            self.mtr_data.set_velocity(msg)
 
-        # emergency break
-        if self.mtr_data.mtr1.velocity.value > MAX_SPEED * 3 or self.mtr_data.mtr2.velocity.value > MAX_SPEED * 3:
-            self.disable()
-            print("Too fast! EMERGENCY BREAK!")
-            sys.exit(0)
+            # emergency break
+            if self.mtr_data.mtr1.velocity.value > MAX_SPEED * 3 or self.mtr_data.mtr2.velocity.value > MAX_SPEED * 3:
+                self.disable()
+                print("Too fast! EMERGENCY BREAK!")
+                sys.exit(0)
 
-        if self.mtr_data.status.mtr1_ready and self.mtr_data.status.mtr2_ready:
-            i_m0 = 0 
-            i_m1 = 0
+            if self.mtr_data.status.mtr1_ready and self.mtr_data.status.mtr2_ready and self.vels is not None:
+                i_m0 = 0 
+                i_m1 = 0
 
-            self.vctrl[0].update_data(self.mtr_data.mtr1)
-            self.vctrl[1].update_data(self.mtr_data.mtr2)
-            self.vctrl[0].run(self.vels[0])
-            self.vctrl[1].run(self.vels[1])
+                self.vctrl[0].update_data(self.mtr_data.mtr1)
+                self.vctrl[1].update_data(self.mtr_data.mtr2)
+                self.vctrl[0].run(self.vels[0])
+                self.vctrl[1].run(self.vels[1])
 
-            if self.auto_tension:
-                i_m0 = max(self.vctrl[0].iqref, HOLDING_CURRENT)
-                i_m1 = max(self.vctrl[1].iqref, HOLDING_CURRENT)
+                if self.auto_tension:
+                    i_m0 = max(self.vctrl[0].iqref, HOLDING_CURRENT)
+                    i_m1 = max(self.vctrl[1].iqref, HOLDING_CURRENT)
+                else:
+                    i_m0 = self.vctrl[0].iqref # right motor, pos on left bend, neg on right 
+                    i_m1 = self.vctrl[1].iqref # left motor, pos on right bend, neg on left 
+
+                i_m0 = max(-MAX_CURRENT, min(MAX_CURRENT, i_m0))
+                i_m1 = max(-MAX_CURRENT, min(MAX_CURRENT, i_m1))
+
+                send_mtr_current(self.bus, i_m0, i_m1)
+                self.log(i_m0, i_m1)
             else:
-                i_m0 = self.vctrl[0].iqref # right motor, pos on left bend, neg on right 
-                i_m1 = self.vctrl[1].iqref # left motor, pos on right bend, neg on left 
-
-            i_m0 = max(-MAX_CURRENT, min(MAX_CURRENT, i_m0))
-            i_m1 = max(-MAX_CURRENT, min(MAX_CURRENT, i_m1))
-
-            send_mtr_current(self.bus, i_m0, i_m1)
-            self.log(i_m0, i_m1)
-        else:
-            send_mtr_current(self.bus, 0, 0)
-            self.log(0, 0)
+                send_mtr_current(self.bus, 0, 0)
+                self.log(0, 0)
     #endregion
 
 class CanHandler:
@@ -259,13 +286,7 @@ class CanHandler:
             self.msg_handler.handle_msg(msg)
 
 if __name__ == "__main__":
-    controller = MotorController(False)
-
-    ''''
-    Computer 
-    M0     M1 
-    M2     M3
-    '''
+    controller = MotorController(autotension = False)
     controller.enable()
 
     if input('This operation will start the motors. Are you sure? [y/N]') == 'y':

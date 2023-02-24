@@ -7,11 +7,9 @@ from scipy.optimize import fsolve
 
 if __name__!='__main__':
     from ..math_helper import convert_arc
-    from .PCR_controller import PCRController
 else:
     sys.path.append('src/')  
     from math_helper import convert_arc
-    from controllers.PCR_controller import PCRController
 
 class Link:
     def __init__(self, index, config, verbose=False):
@@ -103,16 +101,12 @@ class Link:
         return [centerCoordinates, radius, color, -1]
     #endregion 
 
-class CC_Model(PCRController):
+class CC_Model:
     def __init__(self, config):
-        PCRController.__init__(self)
-
+        self.type = "CC_Model"
         self.links = []
-        base_point_center = np.array([0., 0.])
         for i in range(config['num_links']):
             self.links += [Link(i, config['links'][i])]
-            base_point_center += self.links[-1].BASE_POINT
-        base_point_center /= len(self.links)
 
         self.costmap_area = np.array([0.5, 0.5])
         self.scale = 40 # px/m 
@@ -120,9 +114,6 @@ class CC_Model(PCRController):
 
         size = self.costmap_area*self.scale
         self.costmap = self._draw_area(size.astype(int), self.costmap_offset_m, self.scale)
-
-        self.filename = "_model.txt"
-        self.log = False
 
     #region kinematics
     def _check_end_point(self, end_point):
@@ -159,12 +150,6 @@ class CC_Model(PCRController):
 
         self.update_end_point([x, y])
 
-    def enable_log(self, filename):
-        self.filename = filename + "_model.txt"
-        self.log = True
-    
-    def disable_log(self):
-        self.log = False
     #endregion
         
     #region drawing

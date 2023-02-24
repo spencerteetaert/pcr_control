@@ -30,6 +30,7 @@ class AuroraAPI:
         self.calibrating = False
         self.tracking = False
         self.calibrated = False
+        self.out_of_bounds = False
 
         self.norm_rotation = np.eye(3)
         self.norm_translation = np.array([0, 0, 0])
@@ -68,9 +69,17 @@ class AuroraAPI:
         pos = self.get_position()
         return f"Aurora position: {pos[0]:0.4}x, {pos[1]:0.4}y, {pos[2]:0.4}z"
         
-    def start_tracking(self):
+    def start_tracking(self, callback = None):
+        '''Begins tracking thread. 
+
+        Args: 
+            - callback: callback function to be called on recieving new readings. Result of self.get_position() is 
+                passed as an argument. 
+        
+        '''
         # Tracking
         print("Starting Aurora tracking...")
+        self.callback = callback
         self.tracker.trackingStart()
         time.sleep(3)
         self.thread.start()
@@ -83,20 +92,26 @@ class AuroraAPI:
             self.tracker.sensorData_updateAll()
             new_data = self.tracker.sensorData_get()
             if np.any(new_data[0][1] == self.latest_updated_data[0][1]):
-                print("\rERROR: Sensor out of range. Move back to Aurora workspace", end='')
+                if self.verbose:
+                    print("\rERROR: Sensor out of range. Move back to Aurora workspace", end='')
                 self.sensor_data = [[np.array([1., 0., 0., 0.]), np.array([0., 0., 0.])]]
+                self.out_of_bounds = True
             else:
+                self.out_of_bounds = False
                 self.sensor_data = new_data
                 self.latest_updated_data = new_data
 
-                self.log()
+                self._log()
 
                 if self.calibrating:
                     print("\rCurrent Reading:", new_data[0][1], end='')
                 elif self.verbose:
                     print("\rCurrent Position:", self.get_position(), end='')
 
-    def get_sensor_data(self):
+            if self.callback is not None:
+                self.callback(self.get_position())
+
+    def _get_sensor_data(self):
         '''
         Data format: [
             [np.array([x,y,z,w]), np.array([x,y,z])],
@@ -105,10 +120,15 @@ class AuroraAPI:
         return self.sensor_data
 
     def get_position(self):
-        '''Returns position in robot frame (m)
+        '''
+        Returns position in robot frame (m) (3,)
+        Returns None is end effector is outside of the workspace 
         '''
         if not self.calibrated:
             print("ERROR: Aurora is not calibrated to workspace. Unable to provide position.")
+            return None
+
+        if self.out_of_bounds: 
             return None
         return (self.norm_rotation @ (self.sensor_data[0][1] + self.norm_translation)) / 1000
 
@@ -122,7 +142,7 @@ class AuroraAPI:
         if self.file is not None:
             self.file.close()
 
-    def log(self):
+    def _log(self):
         if self.log_flag:
             timestep = time.time()
             pos = self.get_position()
@@ -188,7 +208,7 @@ class AuroraAPI:
 
     def on_press(self, key):
         if key == keyboard.KeyCode.from_char('r'):
-            self.cal_readings += [self.get_sensor_data()[0][1]]
+            self.cal_readings += [self._get_sensor_data()[0][1]]
             print("Recorded", self.cal_readings[-1])
         elif key == keyboard.KeyCode.from_char('d'):
             print("Deleted", self.cal_readings[-1])

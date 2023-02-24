@@ -6,12 +6,6 @@ import numpy as np
 
 from blmc.pid import PID
 
-if __name__!='__main__':
-    from .PCR_controller import PCRController
-else:
-    sys.path.append('src/')
-    from controllers.PCR_controller import PCRController
-
 class Link:
     def __init__(self, index, config):
         self.INDEX = index
@@ -25,10 +19,9 @@ class Link:
         self.GEAR_RATIO = config['gear_ratio']
 
 
-class Closed_Loop_Controller(PCRController):
+class Closed_Loop_Controller:
     def __init__(self, config, Kp=0.005, Kd=0, Ki=0.0001, real_time=False):
-        PCRController.__init__(self)
-
+        self.type = "Closed_Loop_Controller"
         self.real_time = real_time
         self.START_TIME = time.time()
 
@@ -68,9 +61,9 @@ class Closed_Loop_Controller(PCRController):
         '''
         Updates control signal after receiving end effector position feedback 
         Arguments: 
-        - pos: aurora position object 
+        - pos: (2,) numpy array with robot end effector position (x,y) [m]
         ''' 
-        self.ee_pos = pos 
+        self.ee_pos = pos
         u = []
         for i in range(len(self.links)):
             error = np.linalg.norm(self.ref - self.links[i].BASE_POINT) - np.linalg.norm(self.ee_pos - self.links[i].BASE_POINT)
