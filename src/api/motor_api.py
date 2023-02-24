@@ -67,8 +67,8 @@ class MotorController:
             PositionController(Kp, Ki, Kd)
         ]
         Kp = 0.05
-        Kd = 0.1
-        Ki = 0.005
+        Kd = 0.2
+        Ki = 0.08
         self.pctrl_recovery = [
             PositionController(Kp, Ki, Kd), 
             PositionController(Kp, Ki, Kd)

@@ -168,7 +168,7 @@ class PCRController:
             raise 
 
         if self.state == State.RECOVER:
-            if np.linalg.norm([self.motor_api.mtr_data.mtr1.position.value, self.motor_api.mtr_data.mtr2.position.value]) < 20:
+            if np.linalg.norm([self.motor_api.mtr_data.mtr1.position.value, self.motor_api.mtr_data.mtr2.position.value]) < 2:
                 # Exit recovery state when goal position is reached
                 self._stop_recovery()
 

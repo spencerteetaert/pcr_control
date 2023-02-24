@@ -17,7 +17,7 @@ controller = PCRController(MotorController(type='pos', auto_tension = False), Au
 controller.enable()
 
 ref = [0, 0]
-step = 0.5
+step = 0.1
 
 i1, i2 = 0, 1
 
