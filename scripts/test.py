@@ -10,49 +10,50 @@ from src.api.aurora_api import AuroraAPI
 from src.api.motor_api import MotorController
 from src.controllers.closed_loop_controller import Closed_Loop_Controller
 
-
-config = yaml.safe_load(open("configs/config1.yaml", 'r'))
-controller = PCRController(MotorController(type='pos', auto_tension = False), AuroraAPI(verbose=False), Closed_Loop_Controller(config['controller_params'], real_time=True), debug=True)
-
-controller.enable()
-
+control_space = 'joint'
 ref = [0, 0]
 step = 0.1
 
-i1, i2 = 0, 1
+config = yaml.safe_load(open("configs/config1.yaml", 'r'))
+controller = PCRController(MotorController(type='pos'), AuroraAPI(verbose=False), Closed_Loop_Controller(config['controller_params'], real_time=True), debug=True)
 
 def on_press(key):
-    global ref, controller
+    global ref, controller, control_space
 
-    if controller.state == State.READY:
-        # If ready, reset ref position. This is for post recovery 
-        ref[0] = controller.motor_api.mtr_data.mtr1.position.value
-        ref[1] = controller.motor_api.mtr_data.mtr2.position.value
+    # State responses 
     if controller.state == State.RECOVER:
         return 
-
+    if controller.state == State.READY:
+        # If ready, reset ref position. This is for post recovery 
+        if control_space == 'joint':
+            ref[0] = controller.motor_api.mtr_data.mtr1.position.value
+            ref[1] = controller.motor_api.mtr_data.mtr2.position.value
+        elif control_space == 'task':
+            ref = controller.end_point
+    
+    # Toggles 
     if key == keyboard.KeyCode.from_char('e'):
         # Force recovery bahavior 
         controller._start_recovery()
         return 
-
-    if key == keyboard.KeyCode('r'):
+    elif key == keyboard.KeyCode('r'):
         # Enter random data generation mode 
         controller.set_mode('ran')
         return 
+    elif key == keyboard.KeyCode.from_char('m'):
+        # Toggles between joint and task space control 
+        control_space = 'joint' if control_space == 'task' else 'task'
+        return 
 
-    if key == keyboard.KeyCode.from_char('t'):
-        controller.controller.auto_tension = not controller.controller.auto_tension
-        print("Auto tension:", controller.controller.auto_tension)
+    # Movement 
     elif key == keyboard.KeyCode.from_char('a'):
-        ref[i1] -= step
-    elif key == keyboard.KeyCode.from_char('q'):
-        ref[i1] += step
+        ref[0] -= step
+    elif key == keyboard.KeyCode.from_char('d' if control_space == 'task' else 'q'):
+        ref[0] += step
     elif key == keyboard.KeyCode.from_char('w'):
-        ref[i2] += step
+        ref[1] += step
     elif key == keyboard.KeyCode.from_char('s'):
-        ref[i2] -= step
-
+        ref[1] -= step
     else:
         if abs(ref[0]) > 0.03:
             ref[0] += 0.03 * ((ref[0] < 0) - 0.5)*2
@@ -62,23 +63,28 @@ def on_press(key):
             ref[1] += 0.03 * ((ref[1] < 0) - 0.5)*2
         else:
             ref[1] = 0
-
-    controller.set_mode('man', ref)
+    controller.set_mode('man_joint' if control_space == 'joint' else 'man_task', ref)
 
 def on_release(key):
     if key == keyboard.Key.esc:
         # Stop listener
         return False
 
-ref[0] = controller.motor_api.mtr_data.mtr1.position.value
-ref[1] = controller.motor_api.mtr_data.mtr2.position.value
+if __name__=='__main__':
+    controller.enable()
 
-listener = keyboard.Listener(
-    on_press=on_press,
-    on_release=on_release)
-listener.start()
+    if control_space == 'joint':
+        ref[0] = controller.motor_api.mtr_data.mtr1.position.value
+        ref[1] = controller.motor_api.mtr_data.mtr2.position.value
+    elif control_space == 'task':
+        ref = controller.end_point
 
-print("Manual control ready")
-listener.join()
+    listener = keyboard.Listener(
+        on_press=on_press,
+        on_release=on_release)
+    listener.start()
 
-controller.disable()
+    print("Manual control ready")
+    listener.join()
+
+    controller.disable()

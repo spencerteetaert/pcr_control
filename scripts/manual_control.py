@@ -12,7 +12,7 @@ from blmc.pid import PID
 
 CONTROL_TYPE = 'vel'
 
-api = MotorController(type = CONTROL_TYPE, auto_tension = False)
+api = MotorController(type = CONTROL_TYPE)
 time.sleep(2)
 api.enable()
 time.sleep(1)
@@ -30,10 +30,7 @@ FLAG = time.time()
 def on_press(key):
     global ref, api, i1, i2, FLAG
 
-    if key == keyboard.KeyCode.from_char('t'):
-        api.auto_tension = not api.auto_tension
-        print("Auto tension:", api.auto_tension)
-    elif key == keyboard.KeyCode.from_char('a'):
+    if key == keyboard.KeyCode.from_char('a'):
         ref[i1] -= step
     elif key == keyboard.KeyCode.from_char('q'):
         ref[i1] += step

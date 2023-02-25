@@ -9,9 +9,10 @@ class State(Enum):
     STOPPED = 1 # Robot is stopped, no data collection taking place. 
     RANDOM_TRACKING = 2 # Robot is operating as expected, collecting random samples. 
     REFERENCE_TRACKING = 3 # Robot is operating as expected, tracking provided reference. 
-    MANUAL_TRACKING = 4 # Robot is operating as expected, tracking manual inputs. 
-    RECOVER = 5 # Robot has moved outside of aurora field of view, attempting to recover without human intervention 
-    READY = 6 # Ready to begin data collection 
+    MANUAL_TRACKING_JOINT = 4 # Robot is operating as expected, tracking manual inputs. 
+    MANUAL_TRACKING_TASK = 5 # Robot is operating as expected, tracking manual inputs. 
+    RECOVER = 6 # Robot has moved outside of aurora field of view, attempting to recover without human intervention 
+    READY = 7 # Ready to begin data collection 
 
 '''
 PCR Controller Class 
@@ -40,12 +41,13 @@ class PCRController:
         self.aurora_api = aurora_api
 
         # State information 
-        self.state = State.READY 
+        self.state = State.STOPPED 
         self.end_point = np.array([0, 0])
         self.recovery_i = 0 
         self.recovery_sequence = [[0, 0]]
         self.ref_i = 0
         self.ref_squence = [[0, 0]]
+        self.ref_point = [0, 0]
         self.error_counter = 0
 
         # Logging setup 
@@ -71,6 +73,7 @@ class PCRController:
         self.motor_api.enable()
         self.aurora_api.start_tracking(self._update_end_point)
         time.sleep(3)
+        self.state = State.READY
 
     def disable(self): 
         if self.debug:
@@ -86,9 +89,12 @@ class PCRController:
             mode (str): Mode to switch into. Options include 'man' (Manual), 'ran' (Random), and 'ref' (Reference)
             ref (iterable): (Nx2) reference trajectory if mode == 'ref', (2,) reference point if mode == 'man'
         '''
-        if mode == 'man':
-            self.state = State.MANUAL_TRACKING
+        if mode == 'man_joint':
+            self.state = State.MANUAL_TRACKING_JOINT
             self.ref_point = ref
+        elif mode == 'man_task':
+            self.state = State.MANUAL_TRACKING_TASK
+            self.controller.update_goal_point(ref)
         elif mode == 'ran':
             self.state = State.RANDOM_TRACKING
         elif mode == 'ref':
@@ -159,9 +165,6 @@ class PCRController:
     def _step(self): 
         if self.debug: 
             print(self)
-        
-        # Get reference signal for current state 
-        u = self._get_ref()
 
         if self.state == State.ERROR:
             print("ERROR: Please manually reset the system.")
@@ -172,25 +175,26 @@ class PCRController:
                 # Exit recovery state when goal position is reached
                 self._stop_recovery()
 
-        if self.state in [State.RANDOM_TRACKING, State.REFERENCE_TRACKING, State.MANUAL_TRACKING]:
+        if self.state in [State.RANDOM_TRACKING, State.REFERENCE_TRACKING, State.MANUAL_TRACKING_JOINT]:
             self.controller.update_end_point(self.end_point)
 
-        
-        self.motor_api.set_ref(u) # Sends motor commands, comment to run system without motion 
+        # Get reference signal for current state 
+        u = self._get_ref()
+        # Sends motor commands, comment to run system without motion 
+        self.motor_api.set_ref(u) 
 
     def _bound_extension(self, u):
         '''Limits robot to operate on one side of its bending ability
         '''
         # TODO 
         return u 
-        
 
     def _get_ref(self):
         '''Gets setpoint for motor api based on current system state 
         '''
-        if self.state in [State.RANDOM_TRACKING, State.REFERENCE_TRACKING]:
-            return self._bound_extension(self.controller.u)
-        elif self.state == State.MANUAL_TRACKING:
+        if self.state in [State.RANDOM_TRACKING, State.REFERENCE_TRACKING, State.MANUAL_TRACKING_TASK]:
+            return self._bound_extension(self.controller.get_command())
+        elif self.state == State.MANUAL_TRACKING_JOINT:
             return self.ref_point
         elif self.state == State.RECOVER: 
             return [0, 0] #self.recovery_sequence[self.recovery_i-1]

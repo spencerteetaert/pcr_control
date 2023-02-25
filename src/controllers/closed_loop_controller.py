@@ -20,7 +20,7 @@ class Link:
 
 
 class Closed_Loop_Controller:
-    def __init__(self, config, Kp=0.005, Kd=0, Ki=0.0001, real_time=False):
+    def __init__(self, config, Kp=0.5, Kd=0, Ki=0.01, real_time=False):
         self.type = "Closed_Loop_Controller"
         self.real_time = real_time
         self.START_TIME = time.time()
@@ -35,6 +35,7 @@ class Closed_Loop_Controller:
             self.links += [Link(i, config['links'][i])]
 
         # Initialize cost map 
+        self.bounds = config['bounds']
         self.costmap_area = np.array([config['bounds'][1][1] - config['bounds'][1][0], config['bounds'][0][1] - config['bounds'][0][0]])
         self.scale = 1000 # px/m 
         self.costmap_offset_m = np.array([config['bounds'][1][0], config['bounds'][0][0]]) # m
@@ -46,8 +47,6 @@ class Closed_Loop_Controller:
         self.ee_pos = np.array([0, 0])
         self.ref = np.array([0, 0])
         self._pid = []
-        self.error = []
-        self.dt = [] 
         self.u = []
         
         # Initialize PID controllers 
@@ -62,6 +61,8 @@ class Closed_Loop_Controller:
         Updates control signal after receiving end effector position feedback 
         Arguments: 
         - pos: (2,) numpy array with robot end effector position (x,y) [m]
+
+        TODO: Possible race condition here that should be fixed 
         ''' 
         self.ee_pos = pos
         u = []
@@ -72,7 +73,6 @@ class Closed_Loop_Controller:
             else:
                 assert timestamp is not None, 'Timestamp must be provided when not running in real time'
                 u += [self._pid[i].GenOut(error, timestamp)]
-
         self.u = u
 
     def update_goal_point(self, goal):

@@ -28,18 +28,15 @@ from blmc.can_helper import start_system, send_mtr_current, stop_system
 
 BITRATE = 1e6
 
-
 MAX_SPEED = 2
-HOLDING_CURRENT = -0.2
 MAX_CURRENT = 2.5
 
 SHOW_CURRENT = False
 
 class MotorController:
-    def __init__(self, type='vel', auto_tension=False, log_rate=100):
+    def __init__(self, type='vel', log_rate=100):
         '''
         Args: 
-            auto_tension (bool): whether to enact a minimum holding current in motors
             log_rate (int): frequency (hz) that motors will log at 
         '''
         self.mtr_data = MotorData()
@@ -52,7 +49,6 @@ class MotorController:
         self.pos = None
         self.manual_override = False
         self.enabled = False
-        self.auto_tension = auto_tension
         self.file = None
         self.log_flag = False
         self.log_rate = log_rate
@@ -89,8 +85,8 @@ class MotorController:
         self.msg_handler.set_id_handler(ArbitrationIds.status, self.mtr_data.set_status)
         self.msg_handler.set_id_handler(ArbitrationIds.current, self.mtr_data.set_current)
 
-        self.msg_handler.set_id_handler(ArbitrationIds.position, self._position_msg_switch)
-        self.msg_handler.set_id_handler(ArbitrationIds.velocity, self._velocity_msg_switch)
+        self.msg_handler.set_id_handler(ArbitrationIds.position, self._on_position_msg)
+        self.msg_handler.set_id_handler(ArbitrationIds.velocity, self._on_velocity_msg)
 
         self.msg_handler.set_id_handler(ArbitrationIds.adc6, self.adc.set_values)
 
@@ -106,7 +102,6 @@ class MotorController:
 
         if SHOW_CURRENT:
             self.current_readings = []
-            self.tension_markers = []
 
             self.fig = plt.figure()
             self.ax = self.fig.add_subplot(1, 1, 1)
@@ -191,24 +186,14 @@ class MotorController:
         elif self.type == 'vel':
             self.vels = ref
 
-    def _position_msg_switch(self, msg):
-        if self.type == 'pos':
-            self._on_position_msg(msg)
-        else:
-            self.mtr_data.set_position(msg)
-    def _velocity_msg_switch(self, msg):
-        if self.type == 'vel':
-            self._on_velocity_msg(msg)
-        else:
-            self.mtr_data.set_velocity(msg)
-
     def _on_position_msg(self, msg):
-        if self.enabled:
+        self.mtr_data.set_position(msg)
+        
+        if self.enabled and self.type == 'pos':
             if self.recover:
                 ctrl = self.pctrl_recovery
             else:
                 ctrl = self.pctrl
-            self.mtr_data.set_position(msg)
 
             if self.mtr_data.status.mtr1_ready and self.mtr_data.status.mtr2_ready and self.pos is not None:
                 i_m0 = 0 
@@ -219,12 +204,8 @@ class MotorController:
                 ctrl[0].run(self.pos[0])
                 ctrl[1].run(self.pos[1])
 
-                if self.auto_tension:
-                    i_m0 = max(ctrl[0].iqref, HOLDING_CURRENT)
-                    i_m1 = max(ctrl[1].iqref, HOLDING_CURRENT)
-                else:
-                    i_m0 = ctrl[0].iqref # right motor, pos on left bend, neg on right 
-                    i_m1 = ctrl[1].iqref # left motor, pos on right bend, neg on left 
+                i_m0 = ctrl[0].iqref # right motor, pos on left bend, neg on right 
+                i_m1 = ctrl[1].iqref # left motor, pos on right bend, neg on left 
 
                 i_m0 = max(-MAX_CURRENT, min(MAX_CURRENT, i_m0))
                 i_m1 = max(-MAX_CURRENT, min(MAX_CURRENT, i_m1))
@@ -236,9 +217,9 @@ class MotorController:
                 self.log(0, 0)
     
     def _on_velocity_msg(self, msg):
-        if self.enabled:
-            self.mtr_data.set_velocity(msg)
-
+        self.mtr_data.set_velocity(msg)
+        
+        if self.enabled and self.type == 'vel':
             # emergency break
             if self.mtr_data.mtr1.velocity.value > MAX_SPEED * 3 or self.mtr_data.mtr2.velocity.value > MAX_SPEED * 3:
                 self.disable()
@@ -254,12 +235,8 @@ class MotorController:
                 self.vctrl[0].run(self.vels[0])
                 self.vctrl[1].run(self.vels[1])
 
-                if self.auto_tension:
-                    i_m0 = max(self.vctrl[0].iqref, HOLDING_CURRENT)
-                    i_m1 = max(self.vctrl[1].iqref, HOLDING_CURRENT)
-                else:
-                    i_m0 = self.vctrl[0].iqref # right motor, pos on left bend, neg on right 
-                    i_m1 = self.vctrl[1].iqref # left motor, pos on right bend, neg on left 
+                i_m0 = self.vctrl[0].iqref # right motor, pos on left bend, neg on right 
+                i_m1 = self.vctrl[1].iqref # left motor, pos on right bend, neg on left 
 
                 i_m0 = max(-MAX_CURRENT, min(MAX_CURRENT, i_m0))
                 i_m1 = max(-MAX_CURRENT, min(MAX_CURRENT, i_m1))
@@ -286,7 +263,7 @@ class CanHandler:
             self.msg_handler.handle_msg(msg)
 
 if __name__ == "__main__":
-    controller = MotorController(autotension = False)
+    controller = MotorController()
     controller.enable()
 
     if input('This operation will start the motors. Are you sure? [y/N]') == 'y':
