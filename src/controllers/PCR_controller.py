@@ -40,6 +40,8 @@ class PCRController:
         self.motor_api = motor_api
         self.aurora_api = aurora_api
 
+        self.bound_buffer = 10 # rad 
+
         # State information 
         self.state = State.STOPPED 
         self.end_point = np.array([0, 0])
@@ -63,6 +65,7 @@ class PCRController:
         ret = f"PCRController @{time.time() - self.START_TIME}s\n"
         ret += f"  State: {self.state}\n"
         ret += f"  Endpoint: {self.end_point}\n"
+        ret += f"  Setpoint: {self.ref_point}\n"
         ret += f"  Logging: {self.log_flag}\n"
         ret += f"  Recovery i: {self.recovery_i}\n"
         return ret
@@ -95,6 +98,7 @@ class PCRController:
         elif mode == 'man_task':
             self.state = State.MANUAL_TRACKING_TASK
             self.controller.update_goal_point(ref)
+            self.ref_point = ref
         elif mode == 'ran':
             self.state = State.RANDOM_TRACKING
         elif mode == 'ref':
@@ -175,7 +179,7 @@ class PCRController:
                 # Exit recovery state when goal position is reached
                 self._stop_recovery()
 
-        if self.state in [State.RANDOM_TRACKING, State.REFERENCE_TRACKING, State.MANUAL_TRACKING_JOINT]:
+        if self.state in [State.RANDOM_TRACKING, State.REFERENCE_TRACKING, State.MANUAL_TRACKING_JOINT, State.MANUAL_TRACKING_TASK]:
             self.controller.update_end_point(self.end_point)
 
         # Get reference signal for current state 
@@ -187,7 +191,20 @@ class PCRController:
         '''Limits robot to operate on one side of its bending ability
         '''
         # TODO 
-        return u 
+        if self.motor_api.type == 'pos':
+            return [max(0, u[0]), max(0, u[1])]
+        elif self.motor_api.type == 'vel':
+            motor_pos = [self.motor_api.mtr_data.mtr1.position.value, self.motor_api.mtr_data.mtr2.position.value]
+            if u[0] > 0:
+                u0 = 0 if motor_pos[0] > 0 else u[0] * (abs(motor_pos[0]) / self.bound_buffer if motor_pos[0] < self.bound_buffer else 1)
+            else: 
+                u0 = u[0]
+            if u[1] > 0:
+                u1 = 0 if motor_pos[1] > 0 else u[1] * (abs(motor_pos[1]) / self.bound_buffer if motor_pos[1] < self.bound_buffer else 1)
+            else:
+                u1 = u[1]
+            ret = [u0, u1]
+            return ret
 
     def _get_ref(self):
         '''Gets setpoint for motor api based on current system state 
