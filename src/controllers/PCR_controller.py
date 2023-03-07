@@ -35,13 +35,15 @@ Methods:
 class PCRController:
     def __init__(self, motor_api, aurora_api, controller, log_dir='logs', debug=False):
         assert controller.type == "Closed_Loop_Controller", "High level operation only supports Closed_Loop_Controller"
+        self.debug = debug
+        
         # APIs 
         self.controller = controller 
         self.motor_api = motor_api
         self.aurora_api = aurora_api
 
         self.bound_buffer = 10 # rad 
-        self.workspace_size = np.array([0.45, 0.45])
+        self.workspace_size = np.array([0.5, 0.5]) # m 
 
         # State information 
         self.state = State.STOPPED 
@@ -55,15 +57,24 @@ class PCRController:
         self.error_counter = 0
         self.generate_random = False
 
+        self.v_end_point = None
+        self.last_ee_update = None
+        self.traj_start_time = None
+
         # Logging setup 
-        self.file = None
+        self.log_file = None
         self.log_flag = False
         self.log_dir = log_dir
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir)
-        self.debug = debug
+        
         self.START_TIME = time.time()
-        self.last_log_timestep = time.time()
+        self.meta_log = open(os.path.join(self.log_dir, "meta_data.txt"), 'a')
+        self.meta_log.write('trial_prefix,termination_cause,duration,start_x,start_y,end_x,end_y\n')
+
+        self.log_err_msg = None
+        self.log_file_start_time = None
+        self.log_start_pos = None
     
     def __repr__(self):
         ret = f"PCRController @{time.time() - self.START_TIME}s\n"
@@ -86,6 +97,7 @@ class PCRController:
     def disable(self): 
         if self.debug:
             print("Disabling system.")
+        self.disable_log('USER TERMINATION')
         self.motor_api.disable()
         self.aurora_api.stop_tracking()
 
@@ -100,6 +112,7 @@ class PCRController:
         if self.debug: 
             print("Mode change:", mode)
         self.generate_random = False
+        self.disable_log('MODE SWITCH')
         if mode == 'man_joint':
             self.state = State.MANUAL_TRACKING_JOINT
             self.ref_point = ref
@@ -128,11 +141,17 @@ class PCRController:
                     if self.state == State.READY:
                         # If state is ready, recovery has already been completed and failed.
                         self.state = State.ERROR
+                        self.log_err_msg = 'ERROR: Recovery failed.'
                     else:
                         self._start_recovery()
                     self.end_point = None
         else:
+            self.error_counter = 0 
+            if self.last_ee_update is not None and self.end_point is not None:
+                self.v_end_point = np.linalg.norm(self.end_point - aurora_reading[:2]) / (time.time() - self.last_ee_update)
+            self.last_ee_update = time.time()
             self.end_point = aurora_reading[:2]
+            
 
         self._step()
     
@@ -145,21 +164,26 @@ class PCRController:
         self.motor_api.set_ref([0, 0]) 
 
         # Disable logs        
-        self.disable_log('OUT OF BOUNDS')
+        self.disable_log('AURORA LOST')
 
         # Switch to recovery controller (open-loop position) 
         self.motor_api.reset_pid(True)
         self._pre_recovery_type = self.motor_api.type
         self.motor_api.type = 'pos'
 
+        self.enable_log()
+
         if self.debug:
-            print(f"Entered recovery mode for {self.recovery_i} steps.")
+            print(f"Entered recovery mode.")
 
     def _stop_recovery(self):
         '''Takes robot out of recovery mode 
         '''
         assert self.state == State.RECOVER, "Cannot stop recover if not currently in recover state."
         self.state = State.STOPPED
+
+        # Disable logs        
+        self.disable_log('RECOVERY')
 
         # Zero motor commands 
         self.motor_api.pos = [self.motor_api.mtr_data.mtr1.position.value, self.motor_api.mtr_data.mtr2.position.value] 
@@ -172,14 +196,41 @@ class PCRController:
 
         if self.debug:
             print("Exiting recovery mode.")
+
+    def _check_health(self):
+        try:
+            if not self.motor_api.thread.is_alive():
+                raise
+        except:
+            self.state = State.ERROR
+            self.log_err_msg = 'ERROR: Motor api thread died.'
+
+        try:
+            if not self.aurora_api.thread.is_alive():
+                raise
+        except:
+            self.state = State.ERROR
+            self.log_err_msg = 'ERROR: Aurora api thread died.'
         
+    def check_point(self, pt):
+        '''Returns True if pt is reachable, False if not 
+        '''
+        for link in self.controller.links:
+            d = np.linalg.norm(pt - link.BASE_POINT)
+            b = np.linalg.norm(pt - self.end_point)
+            if d < link.EXCLUSION_RADIUS or d > link.LENGTH - 0.05 or b > 0.15 or b < 0.05:
+                return False
+        return True
+
     def _step(self): 
         if self.debug: 
             print(self)
 
+        self._check_health() # Raises error if either aurora or motor thread dies 
+
         if self.state == State.ERROR:
             print("ERROR: Please manually reset the system.")
-            self.disable_log('ERROR')
+            self.disable_log(self.log_err_msg)
             self.disable()
             raise 
 
@@ -191,13 +242,20 @@ class PCRController:
         if self.state == State.RANDOM_TRACKING:
             if np.linalg.norm(self.end_point - self.ref_point) < 0.02:
                 self.disable_log('SUCCESS')
-                
+                self.state = State.READY
+            elif self.v_end_point < 0.001 and time.time() - self.traj_start_time > 5:
+                self.disable_log('STALLED')
                 self.state = State.READY
 
         if self.state == State.READY and self.generate_random: 
-            self.ref_point = np.random.random(2) * self.workspace_size
+            while True: 
+                pt = np.random.random(2) * self.workspace_size
+                if self.check_point(pt):
+                    self.ref_point = pt 
+                    break
             self.controller.update_goal_point(self.ref_point)
             self.state = State.RANDOM_TRACKING
+            self.traj_start_time = time.time()
             self.enable_log()
 
         if self.state in [State.RANDOM_TRACKING, State.REFERENCE_TRACKING, State.MANUAL_TRACKING_JOINT, State.MANUAL_TRACKING_TASK]:
@@ -225,7 +283,6 @@ class PCRController:
             else:
                 u1 = u[1]
             ret = [u0, u1]
-# sudo ip link set up can1
             return ret
 
     def _get_ref(self):
@@ -241,28 +298,40 @@ class PCRController:
             return None
 
     def enable_log(self):
-        file_root = os.path.join(self.log_dir, str(time.time())) # Generates unique filename 
+        self.log_file_start_time = time.time()
+        file_root = os.path.join(self.log_dir, str(self.log_file_start_time)) # Generates unique filename
 
         self.aurora_api.enable_log(file_root)
         self.motor_api.enable_log(file_root)
-        self.file = open(file_root + "_controller.txt", 'a')
-        self.file.write('time,state\n')
+
+        self.log_file = open(file_root + "_controller.txt", 'a')
+        self.log_file.write('time,state\n')
         self.log_flag = True
-        self.last_log_timestep = time.time()
+        self.log_start_pos = self.end_point
 
     def disable_log(self, msg = None): 
-        self.motor_api.disable_log(msg)
-        self.aurora_api.disable_log(msg)
+        if self.log_file_start_time is not None:
+            self.meta_log.write(f'{self.log_file_start_time},{msg},{time.time() - self.log_file_start_time},{self.log_start_pos[0]},{self.log_start_pos[1]},{self.end_point[0]},{self.end_point[1]}\n')
+        # Catch case where thread dying causes termination 
+        try:
+            self.motor_api.disable_log(msg)
+        except:
+            pass
+        try:
+            self.aurora_api.disable_log(msg)
+        except:
+            pass
 
         self.log_flag = False
-        if self.file is not None:
-            if msg is not None:
-                self.file.write(msg + '\n')
-            self.file.close()
+        if self.log_file is not None:
+            if msg is not None and not self.log_file.closed:
+                self.log_file.write(msg + '\n')
+            self.log_file.close()
+        self.log_file_start_time = None
+        self.log_start_pos = None
 
     def _log(self):
         if self.log_flag:
             timestep = time.time()
-            self.last_log_timestep = timestep
-            self.file.write(f"{timestep},{self.state}\n")
+            self.log_file.write(f"{timestep},{self.state}\n")
     

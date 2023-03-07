@@ -24,7 +24,7 @@ elif control_space == 'joint':
         step = 0.005 # rad / s 
 
 config = yaml.safe_load(open("configs/config1.yaml", 'r'))
-controller = PCRController(MotorController(type=control_type), AuroraAPI(verbose=False), Closed_Loop_Controller(config['controller_params'], real_time=True), debug=True)
+controller = PCRController(MotorController(type=control_type), AuroraAPI(verbose=False), Closed_Loop_Controller(config['controller_params'], real_time=True), debug=True, log_dir=f'logs/{time.time()}')
 
 def on_press(key):
     global ref, controller, control_space
@@ -46,6 +46,7 @@ def on_press(key):
     # Toggles 
     if key == keyboard.KeyCode.from_char('e'):
         # Force recovery bahavior 
+        controller.set_mode('man_joint' if control_space == 'joint' else 'man_task', ref)
         controller._start_recovery()
         return 
     elif key == keyboard.KeyCode.from_char('r'):
