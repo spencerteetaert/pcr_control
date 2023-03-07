@@ -165,8 +165,10 @@ class MotorController:
                 return
 
             self.last_log_timestep = timestep
-            v0, v1 = "", "" if self.vels is None else self.vels
-            p0, p1 = "", "" if self.pos is None else self.pos
+            v0 = "" if self.vels is None else self.vels[0]
+            v1 = "" if self.vels is None else self.vels[1]
+            p0 = "" if self.pos is None else self.pos[0]
+            p1 = "" if self.pos is None else self.pos[1]
             self.file.write(f"{timestep},{i1},{i2},{p0},{p1},{v0},{v1},{self.mtr_data.mtr1.current.value},{self.mtr_data.mtr2.current.value},{self.mtr_data.mtr1.position.value},{self.mtr_data.mtr2.position.value},{self.mtr_data.mtr1.velocity.value},{self.mtr_data.mtr2.velocity.value},{self.recover},{self.type}\n")
     
     def update_current_graph(self, i):

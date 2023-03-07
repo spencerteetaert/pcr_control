@@ -41,6 +41,7 @@ class PCRController:
         self.aurora_api = aurora_api
 
         self.bound_buffer = 10 # rad 
+        self.workspace_size = np.array([0.45, 0.45])
 
         # State information 
         self.state = State.STOPPED 
@@ -183,13 +184,19 @@ class PCRController:
             raise 
 
         if self.state == State.RECOVER:
-            if np.linalg.norm([self.motor_api.mtr_data.mtr1.position.value, self.motor_api.mtr_data.mtr2.position.value]) < 2:
+            if np.linalg.norm([self.motor_api.mtr_data.mtr1.position.value, self.motor_api.mtr_data.mtr2.position.value]) < 5:
                 # Exit recovery state when goal position is reached
                 self._stop_recovery()
 
+        if self.state == State.RANDOM_TRACKING:
+            if np.linalg.norm(self.end_point - self.ref_point) < 0.02:
+                self.disable_log('SUCCESS')
+                
+                self.state = State.READY
+
         if self.state == State.READY and self.generate_random: 
-            self.controller.update_goal_point([0.21, 0.44])
-            self.ref_point = [0.21, 0.44]
+            self.ref_point = np.random.random(2) * self.workspace_size
+            self.controller.update_goal_point(self.ref_point)
             self.state = State.RANDOM_TRACKING
             self.enable_log()
 
