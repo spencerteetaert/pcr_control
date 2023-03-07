@@ -64,7 +64,7 @@ class MotorController:
         ]
         Kp = 0.05
         Kd = 0.7
-        Ki = 0.08
+        Ki = 0.03
         self.pctrl_recovery = [
             PositionController(Kp, Ki, Kd), 
             PositionController(Kp, Ki, Kd)
@@ -147,12 +147,14 @@ class MotorController:
     #region Logging 
     def enable_log(self, filename):
         self.file = open(filename + "_motor.txt", 'a')
-        self.file.write('time,command_i1,command_i2,set_v1,set_v2,i1,i2,pos1,pos2,vel1,vel2\n')
+        self.file.write('time,command_i1,command_i2,set_pos1,set_pos2,set_vel1,set_vel2,i1,i2,pos1,pos2,vel1,vel2,recovery,ctrl_type\n')
         self.log_flag = True
 
-    def disable_log(self):
+    def disable_log(self, msg = None):
         self.log_flag = False
         if self.file is not None:
+            if msg is not None:
+                self.file.write(msg + '\n')
             self.file.close()
 
     def log(self, i1, i2):
@@ -163,7 +165,9 @@ class MotorController:
                 return
 
             self.last_log_timestep = timestep
-            self.file.write(f"{timestep},{i1},{i2},{self.vels[0]},{self.vels[1]},{self.mtr_data.mtr1.current.value},{self.mtr_data.mtr2.current.value},{self.mtr_data.mtr1.position.value},{self.mtr_data.mtr2.position.value},{self.mtr_data.mtr1.velocity.value},{self.mtr_data.mtr2.velocity.value}\n")
+            v0, v1 = "", "" if self.vels is None else self.vels
+            p0, p1 = "", "" if self.pos is None else self.pos
+            self.file.write(f"{timestep},{i1},{i2},{p0},{p1},{v0},{v1},{self.mtr_data.mtr1.current.value},{self.mtr_data.mtr2.current.value},{self.mtr_data.mtr1.position.value},{self.mtr_data.mtr2.position.value},{self.mtr_data.mtr1.velocity.value},{self.mtr_data.mtr2.velocity.value},{self.recover},{self.type}\n")
     
     def update_current_graph(self, i):
         self.current_readings += [[self.mtr_datas.mtr1.current.value, self.mtr_datas.mtr2.current.value]]

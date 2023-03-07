@@ -77,6 +77,8 @@ class Closed_Loop_Controller:
 
     def update_goal_point(self, goal):
         self.ref = goal 
+        for p in self._pid:
+            p.Initialize()
 
     def get_command(self):
         return self.u

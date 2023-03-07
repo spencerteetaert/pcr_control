@@ -48,7 +48,7 @@ def on_press(key):
         # Force recovery bahavior 
         controller._start_recovery()
         return 
-    elif key == keyboard.KeyCode('r'):
+    elif key == keyboard.KeyCode.from_char('r'):
         # Enter random data generation mode 
         controller.set_mode('ran')
         return 

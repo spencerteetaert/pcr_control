@@ -137,9 +137,11 @@ class AuroraAPI:
         self.file.write('time,x,y,z,x_raw,y_raw,z_raw,q1,q2,q3,q4\n')
         self.log_flag = True
     
-    def disable_log(self):
+    def disable_log(self, msg = None):
         self.log_flag = False
         if self.file is not None:
+            if msg is not None:
+                self.file.write(msg + '\n')
             self.file.close()
 
     def _log(self):

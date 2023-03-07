@@ -45,12 +45,14 @@ class PCRController:
         # State information 
         self.state = State.STOPPED 
         self.end_point = np.array([0, 0])
+        self.u = None
         self.recovery_i = 0 
         self.recovery_sequence = [[0, 0]]
         self.ref_i = 0
         self.ref_squence = [[0, 0]]
         self.ref_point = [0, 0]
         self.error_counter = 0
+        self.generate_random = False
 
         # Logging setup 
         self.file = None
@@ -60,12 +62,14 @@ class PCRController:
             os.makedirs(self.log_dir)
         self.debug = debug
         self.START_TIME = time.time()
+        self.last_log_timestep = time.time()
     
     def __repr__(self):
         ret = f"PCRController @{time.time() - self.START_TIME}s\n"
         ret += f"  State: {self.state}\n"
         ret += f"  Endpoint: {self.end_point}\n"
         ret += f"  Setpoint: {self.ref_point}\n"
+        ret += f"  Control: {self.u}\n"
         ret += f"  Logging: {self.log_flag}\n"
         ret += f"  Recovery i: {self.recovery_i}\n"
         return ret
@@ -92,6 +96,9 @@ class PCRController:
             mode (str): Mode to switch into. Options include 'man' (Manual), 'ran' (Random), and 'ref' (Reference)
             ref (iterable): (Nx2) reference trajectory if mode == 'ref', (2,) reference point if mode == 'man'
         '''
+        if self.debug: 
+            print("Mode change:", mode)
+        self.generate_random = False
         if mode == 'man_joint':
             self.state = State.MANUAL_TRACKING_JOINT
             self.ref_point = ref
@@ -100,7 +107,8 @@ class PCRController:
             self.controller.update_goal_point(ref)
             self.ref_point = ref
         elif mode == 'ran':
-            self.state = State.RANDOM_TRACKING
+            self.state = State.READY
+            self.generate_random = True
         elif mode == 'ref':
             self.state = State.REFERENCE_TRACKING
             assert ref is not None, "Attempted to switch to reference mode without providing a reference trajectory."
@@ -116,8 +124,8 @@ class PCRController:
                 self.error_counter += 1
                 if self.error_counter >= 3: # If 3 missed measurements in a row consider out of bounds 
                     # If aurora reading is out of range, enter recovery mode 
-                    if self.state == State.STOPPED:
-                        # If state is stopped, recovery has already been completed and failed.
+                    if self.state == State.READY:
+                        # If state is ready, recovery has already been completed and failed.
                         self.state = State.ERROR
                     else:
                         self._start_recovery()
@@ -136,9 +144,7 @@ class PCRController:
         self.motor_api.set_ref([0, 0]) 
 
         # Disable logs        
-        self.motor_api.disable_log()
-        self.aurora_api.disable_log()
-        self.disable_log()
+        self.disable_log('OUT OF BOUNDS')
 
         # Switch to recovery controller (open-loop position) 
         self.motor_api.reset_pid(True)
@@ -172,6 +178,8 @@ class PCRController:
 
         if self.state == State.ERROR:
             print("ERROR: Please manually reset the system.")
+            self.disable_log('ERROR')
+            self.disable()
             raise 
 
         if self.state == State.RECOVER:
@@ -179,18 +187,24 @@ class PCRController:
                 # Exit recovery state when goal position is reached
                 self._stop_recovery()
 
+        if self.state == State.READY and self.generate_random: 
+            self.controller.update_goal_point([0.21, 0.44])
+            self.ref_point = [0.21, 0.44]
+            self.state = State.RANDOM_TRACKING
+            self.enable_log()
+
         if self.state in [State.RANDOM_TRACKING, State.REFERENCE_TRACKING, State.MANUAL_TRACKING_JOINT, State.MANUAL_TRACKING_TASK]:
             self.controller.update_end_point(self.end_point)
 
         # Get reference signal for current state 
-        u = self._get_ref()
+        self.u = self._get_ref()
         # Sends motor commands, comment to run system without motion 
-        self.motor_api.set_ref(u) 
+        self.motor_api.set_ref(self.u)
+        self._log() 
 
     def _bound_extension(self, u):
         '''Limits robot to operate on one side of its bending ability
         '''
-        # TODO 
         if self.motor_api.type == 'pos':
             return [max(0, u[0]), max(0, u[1])]
         elif self.motor_api.type == 'vel':
@@ -204,6 +218,7 @@ class PCRController:
             else:
                 u1 = u[1]
             ret = [u0, u1]
+# sudo ip link set up can1
             return ret
 
     def _get_ref(self):
@@ -226,8 +241,21 @@ class PCRController:
         self.file = open(file_root + "_controller.txt", 'a')
         self.file.write('time,state\n')
         self.log_flag = True
+        self.last_log_timestep = time.time()
 
-    def disable_log(self): 
+    def disable_log(self, msg = None): 
+        self.motor_api.disable_log(msg)
+        self.aurora_api.disable_log(msg)
+
         self.log_flag = False
         if self.file is not None:
+            if msg is not None:
+                self.file.write(msg + '\n')
             self.file.close()
+
+    def _log(self):
+        if self.log_flag:
+            timestep = time.time()
+            self.last_log_timestep = timestep
+            self.file.write(f"{timestep},{self.state}\n")
+    

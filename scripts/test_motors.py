@@ -7,7 +7,6 @@ from pynput import keyboard
 import matplotlib.pyplot as plt
 
 from src.api.motor_api import MotorController
-# from src.api.aurora_api import AuroraAPI
 from blmc.pid import PID
 
 CONTROL_TYPE = 'vel'
