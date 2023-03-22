@@ -26,7 +26,11 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+# Additional dev folders
 logs/
+.VSCodeCounter/
+data/*/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template

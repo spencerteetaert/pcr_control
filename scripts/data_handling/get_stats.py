@@ -1,11 +1,14 @@
 import os
 import glob
 import json
+import numpy as np
+import matplotlib.pyplot as plt
 
-path = '/home/jimmy/spencer_thesis/pcr_control/logs/*/*/meta_data.txt'
+# Termination summary 
+print("Termination summary")
+path = '/home/spencer/Documents/thesis/pcr_control/data/*/*/meta_data.txt'
 
 files = glob.glob(path)
-
 accum = {
     'duration': 0,
     'termination_causes':{
@@ -16,9 +19,7 @@ accum = {
         'mode_switch': 0,
         'user_terminated': 0,
     },
-    
 }
-
 for file in files:
     f = open(file, 'rb')
     lines = f.readlines()
@@ -43,3 +44,33 @@ for file in files:
             print("Unhandled termination case:", termination_cause)
 
 print(json.dumps(accum, indent=2))
+
+
+# Task space distribution 
+print("Aurora summary")
+path = '/home/spencer/Documents/thesis/pcr_control/data/*/*/*_aurora.txt'
+
+files = glob.glob(path)
+size = 25
+
+accum = {
+    'readings': 0,
+}
+dist = np.zeros((size, size))
+
+for file in files:
+    f = open(file, 'rb')
+    lines = f.readlines()
+    for i in range(1,len(lines)-1):
+        time,x,y,z,x_raw,y_raw,z_raw,q1,q2,q3,q4 = lines[i].decode().split(",")
+
+        _y, _x = min(max(int(float(y)*size*2), 0), size-1), min(max(int(float(x)*size*2), 0), size-1)
+        dist[_y, _x] += 1
+        accum['readings'] += 1
+
+
+print(json.dumps(accum, indent=2))
+
+plt.imshow(dist)
+plt.colorbar()
+plt.show()
