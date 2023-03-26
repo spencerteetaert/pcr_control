@@ -7,7 +7,7 @@ from torch.utils.data import Dataset, DataLoader
 torch.manual_seed(0)
 
 class PCRDataSet(Dataset):
-    def __init__(self, folder, feedback_horizon=0, prediction_horizon=10, min_travel_distance=0, run_types=['SUCCESS'], debug=False):
+    def __init__(self, folder, prediction_horizon, feedback_horizon=0, min_travel_distance=0, run_types=['SUCCESS'], debug=False):
         '''
         Args: 
             folder (str): parent folder of data collected
@@ -32,6 +32,7 @@ class PCRDataSet(Dataset):
 
         files_meta_data = glob.glob(os.path.join(folder, '*', '*','meta_data.txt'))
 
+        self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
         self.aurora_data = []
         self.indexable_aurora_data = []
@@ -187,7 +188,7 @@ class PCRDataSet(Dataset):
             self.aurora_data[idx]['x'], 
             self.aurora_data[idx]['y'],
             self.motor_data[self.aurora_data_map[idx-1]]['configuration_number']
-            ])
+            ]).to(self.device)
         
         feedback_data = torch.tensor([
             [
@@ -199,14 +200,14 @@ class PCRDataSet(Dataset):
             self.motor_data[i]['vel2'],
             ]
             for i in range(self.aurora_data_map[idx-1] - self.feedback_horizon, self.aurora_data_map[idx-1])
-        ])
+        ]).to(self.device)
         
         try:
             label = torch.tensor([
                 [self.motor_data[i]['command_i1'], 
                 self.motor_data[i]['command_i2']] 
                 for i in range(self.aurora_data_map[idx-1], self.aurora_data_map[idx-1] + self.prediction_horizon)
-            ])
+            ]).to(self.device)
         except:
             print(self.aurora_data_map[idx-1], self.aurora_data_map[idx-1] + self.prediction_horizon, len(self.motor_data))
             raise
@@ -215,11 +216,9 @@ class PCRDataSet(Dataset):
         
 
 if __name__ == '__main__':
-    dataset = PCRDataSet('/home/spencer/Documents/thesis/pcr_control/data/sorted_data', feedback_horizon=30)
+    dataset = PCRDataSet('/home/spencer/Documents/thesis/pcr_control/data/sorted_data', 10, feedback_horizon=30)
 
     train_dataloader = DataLoader(dataset, batch_size=256, shuffle=True)
-
-    print(torch.cuda.is_available())
 
     counter = 0 
     for (position_data, feedback_data), labels in train_dataloader:
