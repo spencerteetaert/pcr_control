@@ -2,12 +2,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+default_device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
 # PyTorch models inherit from torch.nn.Module
 class PCR_Learned_Model(nn.Module):
-    def __init__(self, prediction_horizon):
+    def __init__(self, prediction_horizon, device=default_device, **kwargs):
         super(PCR_Learned_Model, self).__init__()
 
-        self.device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+        self.device = device
 
         self.prediction_horizon = prediction_horizon 
 
