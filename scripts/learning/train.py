@@ -1,34 +1,28 @@
 import time 
-import os 
+import os
 import sys
 import shutil
 import tqdm 
 import json
-import argparse
 
 import torch 
-from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 torch.manual_seed(0)
-import matplotlib.pyplot as plt
 
-from dataloaders.ik_dataset import PCRDataSet
-import models.model as model_file
-
+import models.joint_model as model_file
 
 parameters = {
     'BATCH_SIZE': 512,
     'PREDICTION_HORIZON': 20,
     'FEEDBACK_HORIZON': 30,
-    'NUM_EPOCHS': 50,
+    'NUM_EPOCHS': 100,
     'LEARNING_RATE': 0.001,
     'DEVICE': 'cuda' if torch.cuda.is_available() else 'cpu',
     'MODEL': {
-        
     }
 }
 
-def main(trial_name='', trial_description=''):
+def main(train_dataloader, val_dataloader, trial_name='', trial_description=''):
     # Logging setup 
     root = os.path.dirname(os.path.abspath(__file__))
     if trial_name == '':
@@ -55,14 +49,6 @@ def main(trial_name='', trial_description=''):
     shutil.copyfile(model_file.__file__, os.path.join(save_directory, 'model.py'))
 
     writer = SummaryWriter(os.path.join(save_directory, 'training_data'))
-
-    # Dataset loading 
-    # dataset = PCRDataSet('/home/spencer/Documents/thesis/pcr_control/data/dev', parameters['PREDICTION_HORIZON'], feedback_horizon=parameters['FEEDBACK_HORIZON'], device=parameters['DEVICE'])
-    dataset = PCRDataSet('/home/spencer/Documents/thesis/pcr_control/data/sorted_data', parameters['PREDICTION_HORIZON'], feedback_horizon=parameters['FEEDBACK_HORIZON'], device=parameters['DEVICE'])
-    train_dataset, val_dataset = torch.utils.data.random_split(dataset, [0.8, 0.2])
-    train_dataloader = DataLoader(train_dataset, batch_size=parameters['BATCH_SIZE'], shuffle=True)
-    val_dataloader = DataLoader(val_dataset, batch_size=parameters['BATCH_SIZE'], shuffle=True)
-
 
     # Model loading 
     model = model_file.PCR_Learned_Model(parameters['PREDICTION_HORIZON'], device=parameters['DEVICE'], **parameters['MODEL'])
@@ -96,7 +82,7 @@ def main(trial_name='', trial_description=''):
 
 
     best_vloss = float('inf')
-    early_stopping = 10
+    early_stopping = 5
     for epoch in range(parameters['NUM_EPOCHS']):
         model.train(True)
         avg_loss = train_one_epoch(epoch, writer)
@@ -133,7 +119,18 @@ def main(trial_name='', trial_description=''):
 
 
 if __name__=='__main__':
+    import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('trial_name', default='')
     args = parser.parse_args()
-    main(args.trial_name)
+
+    # Dataset loading 
+    from dataloaders.ik_dataset import PCRDataSet
+    from torch.utils.data import DataLoader
+    # dataset = PCRDataSet('/home/spencer/Documents/thesis/pcr_control/data/dev', parameters['PREDICTION_HORIZON'], feedback_horizon=parameters['FEEDBACK_HORIZON'], device=parameters['DEVICE'])
+    dataset = PCRDataSet('/home/spencer/Documents/thesis/pcr_control/data/sorted_data', parameters['PREDICTION_HORIZON'], feedback_horizon=parameters['FEEDBACK_HORIZON'], device=parameters['DEVICE'])
+    train_dataset, val_dataset = torch.utils.data.random_split(dataset, [0.8, 0.2])
+    train_dataloader = DataLoader(train_dataset, batch_size=parameters['BATCH_SIZE'], shuffle=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=parameters['BATCH_SIZE'], shuffle=True)
+
+    main(train_dataloader, val_dataloader, args.trial_name)
