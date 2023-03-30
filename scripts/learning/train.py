@@ -14,8 +14,8 @@ import models.joint_model as model_file
 parameters = {
     'BATCH_SIZE': 512,
     'PREDICTION_HORIZON': 20,
-    'FEEDBACK_HORIZON': 30,
-    'NUM_EPOCHS': 100,
+    'FEEDBACK_HORIZON': 20,
+    'NUM_EPOCHS': 1000,
     'LEARNING_RATE': 0.001,
     'DEVICE': 'cuda' if torch.cuda.is_available() else 'cpu',
     'MODEL': {
@@ -95,7 +95,7 @@ def main(train_dataloader, val_dataloader, trial_name='', trial_description=''):
             vloss = loss_fn(vpred, vlabels)
             running_vloss += vloss.item()
         avg_vloss = running_vloss / (i + 1) 
-        print(f"Epoch {epoch}: Train Loss: {avg_loss:>8.3} Val Loss: {avg_vloss:>8.3}")
+        
 
         writer.add_scalars('Training vs Validation Loss', {'Training': avg_loss, 'Validation':avg_vloss}, epoch + 1)
         writer.flush()
@@ -104,11 +104,13 @@ def main(train_dataloader, val_dataloader, trial_name='', trial_description=''):
         torch.save(model.state_dict(), model_path)
 
         if avg_vloss < best_vloss:
+            print(f"Epoch {epoch}: Train Loss: {avg_loss:>8.3} Val Loss: {avg_vloss:>8.3} - New best.")
             best_vloss = avg_vloss
             model_path = os.path.join(model_save_directory, f'best_val')
             torch.save(model.state_dict(), model_path)
             early_stopping = 10
         else:
+            print(f"Epoch {epoch}: Train Loss: {avg_loss:>8.3} Val Loss: {avg_vloss:>8.3}")
             early_stopping -= 1
 
         if early_stopping == 0:
