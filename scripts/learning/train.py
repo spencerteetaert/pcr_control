@@ -100,9 +100,12 @@ def main(train_dataloader, val_dataloader, trial_name='', trial_description=''):
         writer.add_scalars('Training vs Validation Loss', {'Training': avg_loss, 'Validation':avg_vloss}, epoch + 1)
         writer.flush()
 
+        model_path = os.path.join(model_save_directory, f'last')
+        torch.save(model.state_dict(), model_path)
+
         if avg_vloss < best_vloss:
             best_vloss = avg_vloss
-            model_path = os.path.join(model_save_directory, f'model_{epoch}')
+            model_path = os.path.join(model_save_directory, f'best_val')
             torch.save(model.state_dict(), model_path)
             early_stopping = 10
         else:
