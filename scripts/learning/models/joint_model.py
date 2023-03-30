@@ -19,7 +19,7 @@ class PCR_Learned_Model(nn.Module):
         self.prediction_horizon = prediction_horizon 
 
         # Construct fc body
-        self.fc1 = [nn.Linear(5, linear_layers[0][0]), nn.ReLU()]
+        self.fc1 = [nn.Linear(4, linear_layers[0][0]), nn.ReLU()]
         for i in range(1, len(linear_layers[0])):
             self.fc1 += [nn.Linear(linear_layers[0][i-1], linear_layers[0][i]), nn.ReLU()]
         self.fc1 = nn.Sequential(*self.fc1)
@@ -43,7 +43,7 @@ class PCR_Learned_Model(nn.Module):
 
     def forward(self, position_data, feedback_data):
         # Position / goal information 
-        x = self.fc1(position_data)
+        x = self.fc1(position_data[:,:4])
 
         # State estimation 
         if self.lstm is not None:
