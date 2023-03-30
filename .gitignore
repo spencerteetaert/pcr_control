@@ -31,6 +31,7 @@ MANIFEST
 logs/
 .VSCodeCounter/
 data/*/
+experiments/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template

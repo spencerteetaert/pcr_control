@@ -7,14 +7,15 @@ import train
 from dataloaders.ik_dataset import PCRDataSet
 
 
+# Model parameters from joint_model_search experiment
 model_params = {'linear_layers': [[5, 5]], 'lstm': 40}
 train.parameters['MODEL'] = model_params
 
-trials = [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 150, 200, 300]
+trials = [1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 150, 200, 300]
 
 from dataloaders.ik_dataset import PCRDataSet
 
-experiment_folder = 'joint_model_search'
+experiment_folder = 'feedback_horizon_search'
 if not os.path.exists(os.path.join('logs', experiment_folder)):
     os.makedirs(os.path.join('logs', experiment_folder))
 experiment_log_file = open(os.path.join(os.path.join('logs', experiment_folder), 'log.txt'), 'a')
