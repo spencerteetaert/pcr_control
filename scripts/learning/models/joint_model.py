@@ -43,10 +43,7 @@ class PCR_Learned_Model(nn.Module):
 
     def forward(self, position_data, feedback_data):
         # Position / goal information 
-        print(position_data.shape)
         x = self.fc1(position_data)
-
-        print(x.shape)
 
         # State estimation 
         if self.lstm is not None:
@@ -56,7 +53,6 @@ class PCR_Learned_Model(nn.Module):
             x = torch.cat([x, x2], 1)
 
         x = torch.reshape(self.fc2(x), (-1, self.prediction_horizon, 2))
-        print(x.shape)
         
         return x
 
