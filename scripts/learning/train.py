@@ -82,7 +82,7 @@ def main(train_dataloader, val_dataloader, trial_name='', trial_description=''):
 
 
     best_vloss = float('inf')
-    early_stopping = 5
+    early_stopping = 10
     for epoch in range(parameters['NUM_EPOCHS']):
         model.train(True)
         avg_loss = train_one_epoch(epoch, writer)
