@@ -9,8 +9,6 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 torch.manual_seed(0)
 
-import models.joint_model as model_file
-
 parameters = {
     'BATCH_SIZE': 512,
     'PREDICTION_HORIZON': 20,
@@ -22,7 +20,7 @@ parameters = {
     }
 }
 
-def main(train_dataloader, val_dataloader, trial_name='', trial_description=''):
+def main(model, train_dataloader, val_dataloader, trial_name='', trial_description=''):
     # Logging setup 
     root = os.path.dirname(os.path.abspath(__file__))
     if trial_name == '':
@@ -46,12 +44,8 @@ def main(train_dataloader, val_dataloader, trial_name='', trial_description=''):
     if not os.path.exists(model_save_directory):
         os.makedirs(model_save_directory)
     shutil.copyfile(__file__, os.path.join(save_directory, 'train.py'))
-    shutil.copyfile(model_file.__file__, os.path.join(save_directory, 'model.py'))
 
     writer = SummaryWriter(os.path.join(save_directory, 'training_data'))
-
-    # Model loading 
-    model = model_file.PCR_Learned_Model(parameters['PREDICTION_HORIZON'], device=parameters['DEVICE'], **parameters['MODEL'])
 
     # Training objects 
     loss_fn = torch.nn.MSELoss()
@@ -137,5 +131,8 @@ if __name__=='__main__':
     train_dataset, val_dataset = torch.utils.data.random_split(dataset, [0.8, 0.2])
     train_dataloader = DataLoader(train_dataset, batch_size=parameters['BATCH_SIZE'], shuffle=True)
     val_dataloader = DataLoader(val_dataset, batch_size=parameters['BATCH_SIZE'], shuffle=True)
+
+    from models.joint_model import PCR_Learned_Model
+    model = PCR_Learned_Model(parameters['PREDICTION_HORIZON'], **parameters['MODEL'])
 
     main(train_dataloader, val_dataloader, args.trial_name)

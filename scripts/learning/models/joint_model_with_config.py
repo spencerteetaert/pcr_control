@@ -57,8 +57,8 @@ class PCR_Learned_Model(nn.Module):
             x = torch.cat([x, x2], 1)
 
         if self.configuration_states is not None:
-            config = self.configuration_states[position_data[:,4]]
-            x = torch.cat([x, config])
+            config = self.configuration_states[position_data[:,4].to(torch.int)]
+            x = torch.cat([x, config], 1)
 
         x = torch.reshape(self.fc2(x), (-1, self.prediction_horizon, 2))
         
