@@ -10,17 +10,20 @@ from torch.utils.tensorboard import SummaryWriter
 torch.manual_seed(0)
 
 parameters = {
-    'BATCH_SIZE': 512,
-    'PREDICTION_HORIZON': 20,
-    'FEEDBACK_HORIZON': 20,
-    'NUM_EPOCHS': 1000,
-    'LEARNING_RATE': 0.001,
     'DEVICE': 'cuda' if torch.cuda.is_available() else 'cpu',
+    'TRAINING': {
+        'BATCH_SIZE': 512,
+        'NUM_EPOCHS': 1000,
+        'LEARNING_RATE': 0.001,
+        'FEEDBACK_HORIZON': 20,
+    },
     'MODEL': {
+        'MODEL_PARAMS': {}, 
+        'PREDICTION_HORIZON': 20,
     }
 }
 
-def main(model, train_dataloader, val_dataloader, trial_name='', trial_description=''):
+def main(model_constructor, train_dataloader, val_dataloader, trial_name='', trial_description=''):
     # Logging setup 
     root = os.path.dirname(os.path.abspath(__file__))
     if trial_name == '':
@@ -32,24 +35,30 @@ def main(model, train_dataloader, val_dataloader, trial_name='', trial_descripti
 
     log_file = open(os.path.join(save_directory, 'description.txt'), 'a')
     sys.stdout = log_file
+    json.dump(parameters, open(os.path.join(save_directory, 'parameters.yaml'), 'a'), indent=4)
+
+    training_params = parameters['TRAINING']
+    model_params = parameters['MODEL']
 
     print("Training start time:", str(time.time()))
     print("Training location:", save_directory)
     print(trial_description)
-    print("-----------------\nRun parameters")
-    print(json.dumps(parameters, indent=4))
-    print("-----------------\n")
+    # print("-----------------\nRun parameters")
+    # print(json.dumps(parameters, indent=4))
+    # print("-----------------\n")
+
+    
 
     model_save_directory = os.path.join(save_directory, 'models')
     if not os.path.exists(model_save_directory):
         os.makedirs(model_save_directory)
-    shutil.copyfile(__file__, os.path.join(save_directory, 'train.py'))
 
     writer = SummaryWriter(os.path.join(save_directory, 'training_data'))
 
     # Training objects 
     loss_fn = torch.nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=parameters['LEARNING_RATE'])
+    model = model_constructor(model_params['PREDICTION_HORIZON'], **model_params['MODEL_PARAMS'])
+    optimizer = torch.optim.Adam(model.parameters(), lr=training_params['LEARNING_RATE'])
 
 
     def train_one_epoch(epoch, tb_writer):
@@ -77,7 +86,7 @@ def main(model, train_dataloader, val_dataloader, trial_name='', trial_descripti
 
     best_vloss = float('inf')
     early_stopping = 10
-    for epoch in range(parameters['NUM_EPOCHS']):
+    for epoch in range(training_params['NUM_EPOCHS']):
         model.train(True)
         avg_loss = train_one_epoch(epoch, writer)
 
