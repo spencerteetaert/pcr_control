@@ -1,37 +1,25 @@
 import os
+import shutil 
 
 import torch 
 from torch.utils.data import DataLoader
 
 import train
 from dataloaders.ik_dataset import PCRDataSet
+import models.joint_model as model_file 
 
 trials = [
-    # LSTM Tuning
-    {'linear_layers': [[10, 10], [50]], 'lstm': 0}, 
-    {'linear_layers': [[10, 10], [50]], 'lstm': 20}, 
-    {'linear_layers': [[10, 10], [50]], 'lstm': 40}, 
-    {'linear_layers': [[10, 10], [50]], 'lstm': 60}, 
-    {'linear_layers': [[10, 10], [50]], 'lstm': 80}, 
-    {'linear_layers': [[10, 10], [50]], 'lstm': 100}, 
+    {'linear_layers': [[10]], 'lstm': 15}, 
+    {'linear_layers': [[20]], 'lstm': 15}, 
+    {'linear_layers': [[30]], 'lstm': 15}, 
 
-    # Head Tuning
-    {'linear_layers': [[10, 10]], 'lstm': 20}, 
-    {'linear_layers': [[10, 10], [25]], 'lstm': 20}, 
-    {'linear_layers': [[10, 10], [50]], 'lstm': 20}, 
+    {'linear_layers': [[10, 10]], 'lstm': 15}, 
+    {'linear_layers': [[20, 20]], 'lstm': 15}, 
+    {'linear_layers': [[30, 30]], 'lstm': 15}, 
 
-    {'linear_layers': [[10, 10], [25, 25]], 'lstm': 20}, 
-    {'linear_layers': [[10, 10], [25, 25, 25]], 'lstm': 20}, 
-    {'linear_layers': [[10, 10], [25, 25, 25, 25]], 'lstm': 20}, 
-
-    # Body Tuning
-    {'linear_layers': [[10], [25, 25]], 'lstm': 20}, 
-    {'linear_layers': [[20], [25, 25]], 'lstm': 20}, 
-    {'linear_layers': [[30], [25, 25]], 'lstm': 20}, 
-
-    {'linear_layers': [[5], [25, 25]], 'lstm': 20}, 
-    {'linear_layers': [[5, 5], [25, 25]], 'lstm': 20}, 
-    {'linear_layers': [[5, 5, 5], [25, 25]], 'lstm': 20}, 
+    {'linear_layers': [[10, 10, 10]], 'lstm': 15}, 
+    {'linear_layers': [[20, 20, 20]], 'lstm': 15}, 
+    {'linear_layers': [[30, 30, 30]], 'lstm': 15}, 
 ]
 
 # Dataset loading 
@@ -42,10 +30,12 @@ train_dataset, val_dataset = torch.utils.data.random_split(dataset, [0.8, 0.2])
 train_dataloader = DataLoader(train_dataset, batch_size=train.parameters['BATCH_SIZE'], shuffle=True)
 val_dataloader = DataLoader(val_dataset, batch_size=train.parameters['BATCH_SIZE'], shuffle=True)
 
-experiment_folder = 'joint_model_search'
+experiment_folder = 'joint_model_search2'
 if not os.path.exists(os.path.join('logs', experiment_folder)):
     os.makedirs(os.path.join('logs', experiment_folder))
-experiment_log_file = open(os.path.join(os.path.join('logs', experiment_folder), 'log.txt'), 'a')
+experiment_log_file = open(os.path.join('logs', experiment_folder, 'log.txt'), 'a')
+shutil.copyfile(__file__, os.path.join('logs', experiment_folder, 'trial_script.py'))
+shutil.copyfile(model_file.__file__, os.path.join('logs', experiment_folder, 'model.py'))
 
 for trial in trials: 
     _trial_name = f'{experiment_folder}/l_'
@@ -54,6 +44,7 @@ for trial in trials:
     _trial_name += f'lstm_{trial["lstm"]}'
 
     train.parameters['MODEL'] = trial
-    val_loss = train.main(train_dataloader, val_dataloader, _trial_name)
+    model = model_file.PCR_Learned_Model(train.parameters['PREDICTION_HORIZON'], device=train.parameters['DEVICE'], **train.parameters['MODEL'])
+    val_loss = train.main(model, train_dataloader, val_dataloader, _trial_name)
 
     experiment_log_file.write(f'val_loss: {val_loss}, params: {str(trial)}\n')

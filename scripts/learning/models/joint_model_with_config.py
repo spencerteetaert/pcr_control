@@ -23,19 +23,19 @@ class PCR_Learned_Model(nn.Module):
             self.configuration_states.data.uniform_(-1, 1)
 
         # Construct fc body
-        self.fc1 = [nn.Linear(4, linear_layers[0][0]), nn.ReLU()]
+        self.fc1 = [nn.Linear(4 + configuration_state, linear_layers[0][0]), nn.ReLU()]
         for i in range(1, len(linear_layers[0])):
             self.fc1 += [nn.Linear(linear_layers[0][i-1], linear_layers[0][i]), nn.ReLU()]
         self.fc1 = nn.Sequential(*self.fc1)
 
         # Construct fc head
         if len(linear_layers) > 1:
-            self.fc2 = [nn.Linear(linear_layers[0][-1] + lstm + configuration_state, linear_layers[1][0]), nn.ReLU()]
+            self.fc2 = [nn.Linear(linear_layers[0][-1] + lstm, linear_layers[1][0]), nn.ReLU()]
             for i in range(1, len(linear_layers[1])):
                 self.fc2 += [nn.Linear(linear_layers[1][i-1], linear_layers[1][i]), nn.ReLU()]
             self.fc2 += [nn.Linear(linear_layers[1][-1], self.prediction_horizon*2)]
         else:
-            self.fc2 = [nn.Linear(linear_layers[0][-1] + lstm + configuration_state, self.prediction_horizon*2)]
+            self.fc2 = [nn.Linear(linear_layers[0][-1] + lstm, self.prediction_horizon*2)]
         self.fc2 = nn.Sequential(*self.fc2)
 
         # Construct state estimator 
@@ -46,8 +46,13 @@ class PCR_Learned_Model(nn.Module):
         self.to(self.device)
 
     def forward(self, position_data, feedback_data):
+        x = position_data[:,:4]
         # Position / goal information 
-        x = self.fc1(position_data[:,:4])
+        if self.configuration_states is not None:
+            config = self.configuration_states[position_data[:,4].to(torch.int)]
+            x = torch.cat([x, config], 1)
+
+        x = self.fc1(x)
 
         # State estimation 
         if self.lstm is not None:
@@ -56,10 +61,7 @@ class PCR_Learned_Model(nn.Module):
 
             x = torch.cat([x, x2], 1)
 
-        if self.configuration_states is not None:
-            config = self.configuration_states[position_data[:,4].to(torch.int)]
-            x = torch.cat([x, config], 1)
-
+        
         x = torch.reshape(self.fc2(x), (-1, self.prediction_horizon, 2))
         
         return x
