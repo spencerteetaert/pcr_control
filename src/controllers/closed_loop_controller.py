@@ -21,7 +21,6 @@ class Link:
 
 class Closed_Loop_Controller:
     def __init__(self, config, Kp=4, Kd=0, Ki=0, real_time=False):
-        self.type = "Closed_Loop_Controller"
         self.real_time = real_time
         self.START_TIME = time.time()
 

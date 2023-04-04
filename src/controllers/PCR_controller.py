@@ -34,7 +34,6 @@ Methods:
 
 class PCRController:
     def __init__(self, motor_api, aurora_api, controller, log_dir='logs', debug=False):
-        assert controller.type == "Closed_Loop_Controller", "High level operation only supports Closed_Loop_Controller"
         self.debug = debug
         
         # APIs 

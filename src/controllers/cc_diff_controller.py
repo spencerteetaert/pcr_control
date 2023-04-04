@@ -3,7 +3,6 @@ import yaml, sys, time
 from math import sin, cos
 
 import numpy as np
-import cv2
 from scipy.optimize import fsolve
 
 class Link:
@@ -30,10 +29,10 @@ class Link:
         return 2*np.sin(self.LENGTH*k/2)/(self.LENGTH*k) - np.linalg.norm(self.end_point - self.BASE_POINT)/self.LENGTH
 
     def _solve_for_k(self):
-        ret = fsolve(self._inverse_kinematics, self.k, full_output=True)
+        ret = fsolve(self._inverse_kinematics, self.k)
         if self.verbose:
             print(f"Link {self.INDEX} curvature solved to be {ret}")
-        return ret[0]
+        return ret
     
     def solve_for_dq(self, dk):
         return dk * self.GEAR_RATIO * self.TENDON_RADIUS * self.LENGTH / self.MOTOR_RADIUS
@@ -115,17 +114,10 @@ class CC_Model:
 
         return True
     
-    def _inverse_kinematics(self, k):
-        return -self.Binv @ self.A @ k - self.goal_point_vel  
+    def _inverse_kinematics(self, dk):
+        return -self.Binv @ self.A @ dk - self.goal_point_vel  
     
     def _gen_A_B(self):
-        '''
-        Updates control signal after receiving end effector position feedback 
-        Arguments: 
-        - pos: (2,) numpy array with robot end effector position (x,y) [m]
-
-        TODO: Possible race condition here that should be fixed 
-        ''' 
         a = []
         b = []
         for link in self.links:
