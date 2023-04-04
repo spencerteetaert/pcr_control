@@ -23,7 +23,6 @@ trials = [
 ]
 
 # Dataset loading 
-from dataloaders.ik_dataset import PCRDataSet
 # dataset = PCRDataSet('/home/spencer/Documents/thesis/pcr_control/data/dev', train.parameters['MODEL']['PREDICTION_HORIZON'], feedback_horizon=train.parameters['TRAINING']['FEEDBACK_HORIZON'], device=train.parameters['DEVICE'])
 dataset = PCRDataSet('/home/spencer/Documents/thesis/pcr_control/data/sorted_data', train.parameters['MODEL']['PREDICTION_HORIZON'], feedback_horizon=train.parameters['TRAINING']['FEEDBACK_HORIZON'], device=train.parameters['DEVICE'])
 train_dataset, val_dataset = torch.utils.data.random_split(dataset, [0.8, 0.2])
