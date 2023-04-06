@@ -34,14 +34,16 @@ elif control_space == 'joint':
         step = 0.005 # rad / s 
 
 config = yaml.safe_load(open("configs/config1.yaml", 'r'))
-# controller = PCRController(MotorController(type=control_type), AuroraAPI(verbose=False), Closed_Loop_Controller(config['controller_params'], real_time=True), debug=True, log_dir=f'logs/{time.time()}')
+controller = PCRController(MotorController(type=control_type), AuroraAPI(verbose=False), Closed_Loop_Controller(config['controller_params'], real_time=True), debug=True, log_dir=f'logs/{time.time()}')
 # controller = PCRController(MotorController(type=control_type), AuroraAPI(verbose=False), CC_Model(config['controller_params'], real_time=True), debug=True, log_dir=f'logs/{time.time()}')
-model_path = "/home/jimmy/spencer_thesis/pcr_control/experiments/feedback_horizon_search2/horizon_30/models/best_val"
-learned_controller = Learned_Controller(model_path, real_time=True)
-controller = PCRController(MotorController(type=control_type, learning_model=learned_controller), AuroraAPI(verbose=False), learned_controller, debug=True, log_dir=f'logs/{time.time()}')
+# model_path = "/home/jimmy/spencer_thesis/pcr_control/experiments/feedback_horizon_search2/horizon_30/models/best_val"
+# learned_controller = Learned_Controller(model_path, real_time=True)
+# controller = PCRController(MotorController(type=control_type, learning_model=learned_controller), AuroraAPI(verbose=False), learned_controller, debug=True, log_dir=f'logs/{time.time()}')
+
+temp_flag = False
 
 def on_press(key):
-    global ref, controller, control_space
+    global ref, controller, control_space, temp_flag
 
     # State responses 
     if controller.state == State.RECOVER:
@@ -62,6 +64,7 @@ def on_press(key):
         # Force recovery bahavior 
         controller.set_mode('man_joint' if control_space == 'joint' else 'man_task', ref)
         controller._start_recovery()
+        temp_flag = True
         return 
     elif key == keyboard.KeyCode.from_char('r'):
         # Enter random data generation mode 
@@ -72,7 +75,14 @@ def on_press(key):
         control_space = 'joint' if control_space == 'task' else 'task'
         return 
     elif key == keyboard.KeyCode.from_char('t'):
+        if controller.controller.__class__.__name__ == "CC_Model" and temp_flag == False:
+            # TODO: Fix. This shouldn't be required. 
+            controller.set_mode('man_joint' if control_space == 'joint' else 'man_task', ref)
+            controller._start_recovery()
+            temp_flag = True
+            return 
         # Runs test trajectories 
+        temp_flag = False
         ref_traj = np.load(ref_trajs.pop(0))
         controller.set_mode('ref', ref_traj)
         return 
