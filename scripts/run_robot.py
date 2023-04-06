@@ -3,17 +3,26 @@ sys.path.append('.')
 import yaml 
 import time
 
+import numpy as np
 from pynput import keyboard
 
 from src.controllers.PCR_controller import PCRController, State
 from src.api.aurora_api import AuroraAPI
 from src.api.motor_api import MotorController
 from src.controllers.closed_loop_controller import Closed_Loop_Controller
+from src.controllers.cc_diff_controller import CC_Model
 
-control_space = 'joint'
+control_space = 'task'
 control_type = 'vel' # vel for task space control, either for joint space
 
 ref = [0, 0]
+ref_trajs = [
+    "data/test_trajs/square.npy",
+    "data/test_trajs/circle.npy",
+    "data/test_trajs/zigzag.npy",
+    "data/test_trajs/hline.npy",
+    "data/test_trajs/vline.npy",
+]
 
 if control_space == 'task':
     step = 0.05 # m 
@@ -24,7 +33,8 @@ elif control_space == 'joint':
         step = 0.005 # rad / s 
 
 config = yaml.safe_load(open("configs/config1.yaml", 'r'))
-controller = PCRController(MotorController(type=control_type), AuroraAPI(verbose=False), Closed_Loop_Controller(config['controller_params'], real_time=True), debug=True, log_dir=f'logs/{time.time()}')
+# controller = PCRController(MotorController(type=control_type), AuroraAPI(verbose=False), Closed_Loop_Controller(config['controller_params'], real_time=True), debug=True, log_dir=f'logs/{time.time()}')
+controller = PCRController(MotorController(type=control_type), AuroraAPI(verbose=False), CC_Model(config['controller_params'], real_time=True), debug=True, log_dir=f'logs/{time.time()}')
 
 def on_press(key):
     global ref, controller, control_space
@@ -57,6 +67,12 @@ def on_press(key):
         # Toggles between joint and task space control 
         control_space = 'joint' if control_space == 'task' else 'task'
         return 
+    elif key == keyboard.KeyCode.from_char('t'):
+        # Runs test trajectories 
+        ref_traj = np.load(ref_trajs.pop(0))
+        controller.set_mode('ref', ref_traj)
+        return 
+
 
     # Movement 
     elif key == keyboard.KeyCode.from_char('a'):

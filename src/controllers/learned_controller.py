@@ -43,7 +43,7 @@ class Learned_Controller:
 
         self.u += output.cpu().tolist()
 
-    def update_end_point(self, pos, timestamp=None):
+    def update_end_point(self, pos, tracking=False, timestamp=None):
         self.ee_pos = pos
 
 if __name__=='__main__':

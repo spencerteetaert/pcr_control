@@ -16,6 +16,7 @@ class Link:
         self.TENDON_RADIUS = config['tendon_radius']
 
         self.GEAR_RATIO = config['gear_ratio']
+        self.CONVERSION_CONSTANTS = -self.GEAR_RATIO * self.TENDON_RADIUS * self.LENGTH / self.MOTOR_RADIUS
 
         self.end_point = np.array([0, 0])
         self.verbose = verbose
@@ -26,16 +27,17 @@ class Link:
 
     #region kinematics 
     def _inverse_kinematics(self, k):
-        return 2*np.sin(self.LENGTH*k/2)/(self.LENGTH*k) - np.linalg.norm(self.end_point - self.BASE_POINT)/self.LENGTH
+        return 2*np.sin(self.LENGTH*k/2)/(self.LENGTH*k) + self.OPTIMIZER_CONSTANT
 
     def _solve_for_k(self):
+        self.OPTIMIZER_CONSTANT = -np.linalg.norm(self.end_point - self.BASE_POINT)/self.LENGTH
         ret = fsolve(self._inverse_kinematics, self.k)
         if self.verbose:
             print(f"Link {self.INDEX} curvature solved to be {ret}")
         return ret
     
     def solve_for_dq(self, dk):
-        return -dk * self.GEAR_RATIO * self.TENDON_RADIUS * self.LENGTH / self.MOTOR_RADIUS
+        return dk * self.CONVERSION_CONSTANTS
 
     def _check_end_point(self, end_point):
         # Checks bounds of end_point to ensure solution exists
@@ -65,7 +67,7 @@ class Link:
     #endregion
 
 class CC_Model:
-    def __init__(self, config, Kp = 0.04, real_time=False):
+    def __init__(self, config, Kp = 0.01, real_time=False):
         self.type = "CC_differential_model"
         self.real_time = real_time
         self.links = []
@@ -95,7 +97,7 @@ class CC_Model:
                 return False
         return True
 
-    def update_end_point(self, pos, timestamp=None):
+    def update_end_point(self, pos, tracking=False, timestamp=None):
         if not self._check_end_point(pos):
             return False
         for i, link in enumerate(self.links):
@@ -115,7 +117,7 @@ class CC_Model:
         return True
     
     def _inverse_kinematics(self, dk):
-        return -self.Binv @ self.A @ dk - self.goal_point_vel  
+        return self.ABinv @ dk - self.goal_point_vel  
     
     def _gen_A_B(self):
         a = []
@@ -130,6 +132,7 @@ class CC_Model:
 
         self.A = np.diag(a)
         self.Binv = np.linalg.inv(np.array(b))
+        self.ABinv = -self.Binv @ self.A
 
     #endregion
 
