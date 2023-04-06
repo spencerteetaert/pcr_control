@@ -35,7 +35,7 @@ class Link:
         return ret
     
     def solve_for_dq(self, dk):
-        return dk * self.GEAR_RATIO * self.TENDON_RADIUS * self.LENGTH / self.MOTOR_RADIUS
+        return -dk * self.GEAR_RATIO * self.TENDON_RADIUS * self.LENGTH / self.MOTOR_RADIUS
 
     def _check_end_point(self, end_point):
         # Checks bounds of end_point to ensure solution exists
