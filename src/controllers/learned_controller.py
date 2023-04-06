@@ -69,8 +69,7 @@ class Learned_Controller:
         feedback_data = torch.Tensor([self.motor_feedback])
 
         output = self.model(position_data, feedback_data)
-
-        self.u += output.tolist()[0]
+        self.u = self.u[:3] + output.tolist()[0] # Keep 3 existing to ensure continuity 
 
     def update_end_point(self, pos, tracking=False, timestamp=None):
         self.ee_pos = pos

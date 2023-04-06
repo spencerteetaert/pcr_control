@@ -2,6 +2,7 @@ import sys
 sys.path.append('.')
 import yaml 
 import time
+from enum import Enum
 
 import numpy as np
 from pynput import keyboard
@@ -13,8 +14,14 @@ from src.controllers.closed_loop_controller import Closed_Loop_Controller
 from src.controllers.cc_diff_controller import CC_Model
 from src.controllers.learned_controller import Learned_Controller
 
+class ControllerTypes(Enum):
+    CC = 0 
+    PID = 1 
+    LEARNED = 2 
+
 control_space = 'task'
 control_type = 'vel' # vel for task space control, either for joint space
+controller_type = ControllerTypes.LEARNED
 
 ref = [0, 0]
 ref_trajs = [
@@ -34,11 +41,17 @@ elif control_space == 'joint':
         step = 0.005 # rad / s 
 
 config = yaml.safe_load(open("configs/config1.yaml", 'r'))
-controller = PCRController(MotorController(type=control_type), AuroraAPI(verbose=False), Closed_Loop_Controller(config['controller_params'], real_time=True), debug=True, log_dir=f'logs/{time.time()}')
-# controller = PCRController(MotorController(type=control_type), AuroraAPI(verbose=False), CC_Model(config['controller_params'], real_time=True), debug=True, log_dir=f'logs/{time.time()}')
-# model_path = "/home/jimmy/spencer_thesis/pcr_control/experiments/feedback_horizon_search2/horizon_30/models/best_val"
-# learned_controller = Learned_Controller(model_path, real_time=True)
-# controller = PCRController(MotorController(type=control_type, learning_model=learned_controller), AuroraAPI(verbose=False), learned_controller, debug=True, log_dir=f'logs/{time.time()}')
+
+if controller_type == ControllerTypes.PID:
+    controller = PCRController(MotorController(type=control_type), AuroraAPI(verbose=False), Closed_Loop_Controller(config['controller_params'], real_time=True), debug=True, log_dir=f'logs/{time.time()}')
+elif controller_type == ControllerTypes.CC:
+    controller = PCRController(MotorController(type=control_type), AuroraAPI(verbose=False), CC_Model(config['controller_params'], real_time=True), debug=True, log_dir=f'logs/{time.time()}')
+elif controller_type == ControllerTypes.LEARNED:
+    model_path = "/home/jimmy/spencer_thesis/pcr_control/experiments/feedback_horizon_search2/horizon_30/models/best_val"
+    learned_controller = Learned_Controller(model_path, real_time=True)
+    controller = PCRController(MotorController(type=control_type, learning_model=learned_controller), AuroraAPI(verbose=False), learned_controller, debug=True, log_dir=f'logs/{time.time()}')
+else:
+    raise ValueError("Please select a valid controller type.")
 
 temp_flag = False
 

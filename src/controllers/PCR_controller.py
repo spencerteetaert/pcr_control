@@ -265,6 +265,9 @@ class PCRController:
         # if self.state in [State.RANDOM_TRACKING, State.REFERENCE_TRACKING, State.REFERENCE_STARTING, State.MANUAL_TRACKING_JOINT, State.MANUAL_TRACKING_TASK]:
         self.controller.update_end_point(self.end_point, tracking=self.state == State.REFERENCE_TRACKING)
 
+        if self.controller.__class__.__name__ == "Learned_Controller":
+            self.controller.update_goal_point(self.ref_point)
+
         if self.state == State.REFERENCE_TRACKING:
             # Following reference trajectory
             self.ref_point = self.ref_squence[self.ref_i]
