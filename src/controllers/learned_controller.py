@@ -15,7 +15,7 @@ class Learned_Controller:
         self.ee_pos = np.array([0, 0])
         self.goal_point = np.array([0, 0])
         self.u = []
-        self.motor_feedback = []
+        self.last_time = time.time()
 
         # Load in configuration 
         sys.path.append('/' + os.path.join(*model_path.split('/')[:-3]))
@@ -23,25 +23,54 @@ class Learned_Controller:
 
         params = json.load(open(os.path.join('/' + os.path.join(*model_path.split('/')[:-2]), 'parameters.yaml'), 'rb'))
         training_params, model_params = params['TRAINING'], params['MODEL']
+        self.FEEDBACK_HORIZON = training_params['FEEDBACK_HORIZON']
+        self.motor_feedback = [0 for _ in range(self.FEEDBACK_HORIZON)]
 
-        weights = torch.load(open(model_path, 'rb'))
+        weights = torch.load(open(model_path, 'rb'), map_location=torch.device('cpu'))
         self.model = PCR_Learned_Model(model_params['PREDICTION_HORIZON'], **model_params['MODEL_PARAMS'])
         self.model.load_state_dict(weights)
         self.model.train(False)
+        print("Learned model loaded.")
+
+    def update_feedback(self, mtr_data):
+        self.motor_feedback.pop(0)
+        self.motor_feedback += [[
+            mtr_data.mtr1.current.value,
+            mtr_data.mtr2.current.value,
+            mtr_data.mtr1.position.value,
+            mtr_data.mtr2.position.value,
+            mtr_data.mtr1.velocity.value,
+            mtr_data.mtr2.velocity.value,
+        ]]
 
     def get_command(self):
-        return self.u.pop(0)
+        if len(self.u) > 0:
+            return self.u[0]
+        else:
+            return [0, 0]
+
+    def _get_command(self):
+        if len(self.u) > 0:
+            t = time.time()
+            if t - self.last_time > 1/100:
+                # Model is trained on 100hz data, in reality system runs closer to 1000hz 
+                self.last_time = t
+                return self.u.pop(0)
+            else: 
+                return self.u[0]
+        else:
+            return [0, 0]
 
     def update_goal_point(self, goal): 
         self.goal_point = goal 
-        # Configuration = -1 assumes robot has not changed since the last training implementation. Ideally this parameter is retuned for each trial
-        position_data = torch.Tensor([self.ee_pos[0], self.ee_pos[1], self.goal_point[0], self.goal_point[1], -1])
-        feedback_data = torch.Tensor(self.motor_feedback)
-        self.motor_feedback = []
-        
+        # Configuration = -1 assumes robot has not changed since the last training implementation. 
+        # Ideally this parameter is retuned for each trial
+        position_data = torch.Tensor([[self.ee_pos[0], self.ee_pos[1], self.goal_point[0], self.goal_point[1], -1]])
+        feedback_data = torch.Tensor([self.motor_feedback])
+
         output = self.model(position_data, feedback_data)
 
-        self.u += output.cpu().tolist()
+        self.u += output.tolist()[0]
 
     def update_end_point(self, pos, tracking=False, timestamp=None):
         self.ee_pos = pos

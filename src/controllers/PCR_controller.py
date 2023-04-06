@@ -262,8 +262,8 @@ class PCRController:
             self.traj_start_time = time.time()
             self.enable_log()
 
-        if self.state in [State.RANDOM_TRACKING, State.REFERENCE_TRACKING, State.REFERENCE_STARTING, State.MANUAL_TRACKING_JOINT, State.MANUAL_TRACKING_TASK]:
-            self.controller.update_end_point(self.end_point, tracking=self.state == State.REFERENCE_TRACKING)
+        # if self.state in [State.RANDOM_TRACKING, State.REFERENCE_TRACKING, State.REFERENCE_STARTING, State.MANUAL_TRACKING_JOINT, State.MANUAL_TRACKING_TASK]:
+        self.controller.update_end_point(self.end_point, tracking=self.state == State.REFERENCE_TRACKING)
 
         if self.state == State.REFERENCE_TRACKING:
             # Following reference trajectory
@@ -293,6 +293,7 @@ class PCRController:
             self.u = self._get_ref()
 
         # Sends motor commands, comment to run system without motion 
+        # This has no effect on learning based models that do not use PID 
         self.motor_api.set_ref(self.u)
         self._log() 
 

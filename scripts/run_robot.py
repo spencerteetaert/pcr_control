@@ -11,6 +11,7 @@ from src.api.aurora_api import AuroraAPI
 from src.api.motor_api import MotorController
 from src.controllers.closed_loop_controller import Closed_Loop_Controller
 from src.controllers.cc_diff_controller import CC_Model
+from src.controllers.learned_controller import Learned_Controller
 
 control_space = 'task'
 control_type = 'vel' # vel for task space control, either for joint space
@@ -34,7 +35,10 @@ elif control_space == 'joint':
 
 config = yaml.safe_load(open("configs/config1.yaml", 'r'))
 # controller = PCRController(MotorController(type=control_type), AuroraAPI(verbose=False), Closed_Loop_Controller(config['controller_params'], real_time=True), debug=True, log_dir=f'logs/{time.time()}')
-controller = PCRController(MotorController(type=control_type), AuroraAPI(verbose=False), CC_Model(config['controller_params'], real_time=True), debug=True, log_dir=f'logs/{time.time()}')
+# controller = PCRController(MotorController(type=control_type), AuroraAPI(verbose=False), CC_Model(config['controller_params'], real_time=True), debug=True, log_dir=f'logs/{time.time()}')
+model_path = "/home/jimmy/spencer_thesis/pcr_control/experiments/feedback_horizon_search2/horizon_30/models/best_val"
+learned_controller = Learned_Controller(model_path, real_time=True)
+controller = PCRController(MotorController(type=control_type, learning_model=learned_controller), AuroraAPI(verbose=False), learned_controller, debug=True, log_dir=f'logs/{time.time()}')
 
 def on_press(key):
     global ref, controller, control_space
