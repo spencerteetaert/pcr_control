@@ -4,7 +4,11 @@ import yaml, sys, time
 import cv2 
 import numpy as np
 
-from blmc.pid import PID
+if __name__!='__main__':
+    from .pid import PID
+else:
+    sys.path.append('src/')  
+    from controller.pid import PID
 
 class Link:
     def __init__(self, index, config):
@@ -21,7 +25,6 @@ class Link:
 
 class Closed_Loop_Controller:
     def __init__(self, config, Kp=4, Kd=0, Ki=0, real_time=False):
-        self.type = "Closed_Loop_Controller"
         self.real_time = real_time
         self.START_TIME = time.time()
 
@@ -56,7 +59,7 @@ class Closed_Loop_Controller:
             self._pid[-1].SetKi(Ki)
             self._pid[-1].SetKd(Kd)
 
-    def update_end_point(self, pos, timestamp=None):
+    def update_end_point(self, pos, tracking=False, timestamp=None):
         '''
         Updates control signal after receiving end effector position feedback 
         Arguments: 
@@ -69,10 +72,10 @@ class Closed_Loop_Controller:
         for i in range(len(self.links)):
             error = np.linalg.norm(self.ref - self.links[i].BASE_POINT) - np.linalg.norm(self.ee_pos - self.links[i].BASE_POINT)
             if self.real_time:
-                u += [self._pid[i].GenOut(error, time.time())]
+                u += [self._pid[i].GenOut(error, time.time(), tracking=tracking)]
             else:
                 assert timestamp is not None, 'Timestamp must be provided when not running in real time'
-                u += [self._pid[i].GenOut(error, timestamp)]
+                u += [self._pid[i].GenOut(error, timestamp, tracking=tracking)]
         self.u = u
 
     def update_goal_point(self, goal):

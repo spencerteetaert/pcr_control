@@ -9,10 +9,12 @@ class State(Enum):
     STOPPED = 1 # Robot is stopped, no data collection taking place. 
     RANDOM_TRACKING = 2 # Robot is operating as expected, collecting random samples. 
     REFERENCE_TRACKING = 3 # Robot is operating as expected, tracking provided reference. 
-    MANUAL_TRACKING_JOINT = 4 # Robot is operating as expected, tracking manual inputs. 
-    MANUAL_TRACKING_TASK = 5 # Robot is operating as expected, tracking manual inputs. 
-    RECOVER = 6 # Robot has moved outside of aurora field of view, attempting to recover without human intervention 
-    READY = 7 # Ready to begin data collection 
+    REFERENCE_STARTING = 4
+    MANUAL_TRACKING_JOINT = 5 # Robot is operating as expected, tracking manual inputs. 
+    MANUAL_TRACKING_TASK = 6 # Robot is operating as expected, tracking manual inputs. 
+    RECOVER = 7 # Robot has moved outside of aurora field of view, attempting to recover without human intervention 
+    READY = 8 # Ready to begin data collection 
+    HOLDING = 9
 
 '''
 PCR Controller Class 
@@ -34,7 +36,6 @@ Methods:
 
 class PCRController:
     def __init__(self, motor_api, aurora_api, controller, log_dir='logs', debug=False):
-        assert controller.type == "Closed_Loop_Controller", "High level operation only supports Closed_Loop_Controller"
         self.debug = debug
         
         # APIs 
@@ -47,6 +48,7 @@ class PCRController:
 
         # State information 
         self.state = State.STOPPED 
+        self.holdtime = 0 
         self.end_point = np.array([0, 0])
         self.u = None
         self.recovery_i = 0 
@@ -124,10 +126,12 @@ class PCRController:
             self.state = State.READY
             self.generate_random = True
         elif mode == 'ref':
-            self.state = State.REFERENCE_TRACKING
+            self.state = State.REFERENCE_STARTING
             assert ref is not None, "Attempted to switch to reference mode without providing a reference trajectory."
             self.ref_i = 0
             self.ref_squence = ref
+            self.ref_point = self.ref_squence[self.ref_i]
+            self.controller.update_goal_point(self.ref_point)
 
 
     def _update_end_point(self, aurora_reading):
@@ -258,18 +262,48 @@ class PCRController:
             self.traj_start_time = time.time()
             self.enable_log()
 
-        if self.state in [State.RANDOM_TRACKING, State.REFERENCE_TRACKING, State.MANUAL_TRACKING_JOINT, State.MANUAL_TRACKING_TASK]:
-            self.controller.update_end_point(self.end_point)
+        # if self.state in [State.RANDOM_TRACKING, State.REFERENCE_TRACKING, State.REFERENCE_STARTING, State.MANUAL_TRACKING_JOINT, State.MANUAL_TRACKING_TASK]:
+        self.controller.update_end_point(self.end_point, tracking=self.state == State.REFERENCE_TRACKING)
 
-        # Get reference signal for current state 
-        self.u = self._get_ref()
+        if self.controller.__class__.__name__ == "Learned_Controller":
+            self.controller.update_goal_point(self.ref_point)
+
+        if self.state == State.REFERENCE_TRACKING:
+            # Following reference trajectory
+            self.ref_point = self.ref_squence[self.ref_i]
+            self.controller.update_goal_point(self.ref_point)
+            self.ref_i += 1
+            if self.ref_i == len(self.ref_squence):
+                self.ref_squence = []
+                self.ref_i = 0
+                self.state = State.READY
+                self.disable_log("TRACKING_FINISHED")
+
+        if self.state == State.REFERENCE_STARTING:
+            # Moving towards start of reference trajectory 
+            if np.linalg.norm(self.end_point - self.ref_squence[0]) < 0.02:
+                self.holdtime = time.time() + 5 
+                self.state = State.HOLDING
+
+        if self.state == State.HOLDING: 
+            if time.time() > self.holdtime: 
+                self.holdtime = 0 
+                self.state = State.REFERENCE_TRACKING
+                self.enable_log()
+            self.u = [0, 0]
+        else:
+            # Get reference signal for current state 
+            self.u = self._get_ref()
+
         # Sends motor commands, comment to run system without motion 
+        # This has no effect on learning based models that do not use PID 
         self.motor_api.set_ref(self.u)
         self._log() 
 
     def _bound_extension(self, u):
         '''Limits robot to operate on one side of its bending ability
         '''
+        print("Pre-bounding", u)
         if self.motor_api.type == 'pos':
             return [max(0, u[0]), max(0, u[1])]
         elif self.motor_api.type == 'vel':
@@ -288,7 +322,7 @@ class PCRController:
     def _get_ref(self):
         '''Gets setpoint for motor api based on current system state 
         '''
-        if self.state in [State.RANDOM_TRACKING, State.REFERENCE_TRACKING, State.MANUAL_TRACKING_TASK]:
+        if self.state in [State.RANDOM_TRACKING, State.REFERENCE_TRACKING, State.REFERENCE_STARTING, State.MANUAL_TRACKING_TASK]:
             return self._bound_extension(self.controller.get_command())
         elif self.state == State.MANUAL_TRACKING_JOINT:
             return self.ref_point

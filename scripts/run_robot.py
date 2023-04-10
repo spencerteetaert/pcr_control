@@ -2,18 +2,35 @@ import sys
 sys.path.append('.')
 import yaml 
 import time
+from enum import Enum
 
+import numpy as np
 from pynput import keyboard
 
 from src.controllers.PCR_controller import PCRController, State
 from src.api.aurora_api import AuroraAPI
 from src.api.motor_api import MotorController
 from src.controllers.closed_loop_controller import Closed_Loop_Controller
+from src.controllers.cc_diff_controller import CC_Model
+from src.controllers.learned_controller import Learned_Controller
 
-control_space = 'joint'
+class ControllerTypes(Enum):
+    CC = 0 
+    PID = 1 
+    LEARNED = 2 
+
+control_space = 'task'
 control_type = 'vel' # vel for task space control, either for joint space
+controller_type = ControllerTypes.LEARNED
 
 ref = [0, 0]
+ref_trajs = [
+    "data/test_trajs/square.npy",
+    "data/test_trajs/circle.npy",
+    "data/test_trajs/zigzag.npy",
+    "data/test_trajs/hline.npy",
+    "data/test_trajs/vline.npy",
+]
 
 if control_space == 'task':
     step = 0.05 # m 
@@ -24,10 +41,22 @@ elif control_space == 'joint':
         step = 0.005 # rad / s 
 
 config = yaml.safe_load(open("configs/config1.yaml", 'r'))
-controller = PCRController(MotorController(type=control_type), AuroraAPI(verbose=False), Closed_Loop_Controller(config['controller_params'], real_time=True), debug=True, log_dir=f'logs/{time.time()}')
+
+if controller_type == ControllerTypes.PID:
+    controller = PCRController(MotorController(type=control_type), AuroraAPI(verbose=False), Closed_Loop_Controller(config['controller_params'], real_time=True), debug=True, log_dir=f'logs/{time.time()}')
+elif controller_type == ControllerTypes.CC:
+    controller = PCRController(MotorController(type=control_type), AuroraAPI(verbose=False), CC_Model(config['controller_params'], real_time=True), debug=True, log_dir=f'logs/{time.time()}')
+elif controller_type == ControllerTypes.LEARNED:
+    model_path = "/home/jimmy/spencer_thesis/pcr_control/experiments/feedback_horizon_search2/horizon_30/models/best_val"
+    learned_controller = Learned_Controller(model_path, real_time=True)
+    controller = PCRController(MotorController(type=control_type, learning_model=learned_controller), AuroraAPI(verbose=False), learned_controller, debug=True, log_dir=f'logs/{time.time()}')
+else:
+    raise ValueError("Please select a valid controller type.")
+
+temp_flag = False
 
 def on_press(key):
-    global ref, controller, control_space
+    global ref, controller, control_space, temp_flag
 
     # State responses 
     if controller.state == State.RECOVER:
@@ -48,6 +77,7 @@ def on_press(key):
         # Force recovery bahavior 
         controller.set_mode('man_joint' if control_space == 'joint' else 'man_task', ref)
         controller._start_recovery()
+        temp_flag = True
         return 
     elif key == keyboard.KeyCode.from_char('r'):
         # Enter random data generation mode 
@@ -57,6 +87,19 @@ def on_press(key):
         # Toggles between joint and task space control 
         control_space = 'joint' if control_space == 'task' else 'task'
         return 
+    elif key == keyboard.KeyCode.from_char('t'):
+        if controller.controller.__class__.__name__ == "CC_Model" and temp_flag == False:
+            # TODO: Fix. This shouldn't be required. 
+            controller.set_mode('man_joint' if control_space == 'joint' else 'man_task', ref)
+            controller._start_recovery()
+            temp_flag = True
+            return 
+        # Runs test trajectories 
+        temp_flag = False
+        ref_traj = np.load(ref_trajs.pop(0))
+        controller.set_mode('ref', ref_traj)
+        return 
+
 
     # Movement 
     elif key == keyboard.KeyCode.from_char('a'):

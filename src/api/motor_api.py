@@ -34,12 +34,13 @@ MAX_CURRENT = 2.5
 SHOW_CURRENT = False
 
 class MotorController:
-    def __init__(self, type='vel', log_rate=100):
+    def __init__(self, type='vel', log_rate=100, learning_model=None):
         '''
         Args: 
             log_rate (int): frequency (hz) that motors will log at 
         '''
         self.mtr_data = MotorData()
+        self.learning_model = learning_model
         self.adc = AdcResult()
         self.bus = can.ThreadSafeBus('can0', bitrate=BITRATE)
         self.type = type
@@ -194,6 +195,8 @@ class MotorController:
 
     def _on_position_msg(self, msg):
         self.mtr_data.set_position(msg)
+        if self.learning_model is not None and self.type == 'pos':
+            self.learning_model.update_feedback(self.mtr_data)
         
         if self.enabled and self.type == 'pos':
             if self.recover:
@@ -202,16 +205,19 @@ class MotorController:
                 ctrl = self.pctrl
 
             if self.mtr_data.status.mtr1_ready and self.mtr_data.status.mtr2_ready and self.pos is not None:
-                i_m0 = 0 
-                i_m1 = 0
+                if self.learning_model is not None and not self.recover:
+                    i_m0, i_m1 = self.learning_model._get_command()
+                else:
+                    i_m0 = 0 
+                    i_m1 = 0
 
-                ctrl[0].update_data(self.mtr_data.mtr1)
-                ctrl[1].update_data(self.mtr_data.mtr2)
-                ctrl[0].run(self.pos[0])
-                ctrl[1].run(self.pos[1])
+                    ctrl[0].update_data(self.mtr_data.mtr1)
+                    ctrl[1].update_data(self.mtr_data.mtr2)
+                    ctrl[0].run(self.pos[0])
+                    ctrl[1].run(self.pos[1])
 
-                i_m0 = ctrl[0].iqref # right motor, pos on left bend, neg on right 
-                i_m1 = ctrl[1].iqref # left motor, pos on right bend, neg on left 
+                    i_m0 = ctrl[0].iqref # right motor, pos on left bend, neg on right 
+                    i_m1 = ctrl[1].iqref # left motor, pos on right bend, neg on left 
 
                 i_m0 = max(-MAX_CURRENT, min(MAX_CURRENT, i_m0))
                 i_m1 = max(-MAX_CURRENT, min(MAX_CURRENT, i_m1))
@@ -224,6 +230,8 @@ class MotorController:
     
     def _on_velocity_msg(self, msg):
         self.mtr_data.set_velocity(msg)
+        if self.learning_model is not None and self.type == 'vel':
+            self.learning_model.update_feedback(self.mtr_data)
         
         if self.enabled and self.type == 'vel':
             # emergency break
@@ -233,16 +241,19 @@ class MotorController:
                 sys.exit(0)
 
             if self.mtr_data.status.mtr1_ready and self.mtr_data.status.mtr2_ready and self.vels is not None:
-                i_m0 = 0 
-                i_m1 = 0
+                if self.learning_model is not None and not self.recover:
+                    i_m0, i_m1 = self.learning_model._get_command()
+                else:
+                    i_m0 = 0 
+                    i_m1 = 0
 
-                self.vctrl[0].update_data(self.mtr_data.mtr1)
-                self.vctrl[1].update_data(self.mtr_data.mtr2)
-                self.vctrl[0].run(self.vels[0])
-                self.vctrl[1].run(self.vels[1])
+                    self.vctrl[0].update_data(self.mtr_data.mtr1)
+                    self.vctrl[1].update_data(self.mtr_data.mtr2)
+                    self.vctrl[0].run(self.vels[0])
+                    self.vctrl[1].run(self.vels[1])
 
-                i_m0 = self.vctrl[0].iqref # right motor, pos on left bend, neg on right 
-                i_m1 = self.vctrl[1].iqref # left motor, pos on right bend, neg on left 
+                    i_m0 = self.vctrl[0].iqref # right motor, pos on left bend, neg on right 
+                    i_m1 = self.vctrl[1].iqref # left motor, pos on right bend, neg on left 
 
                 i_m0 = max(-MAX_CURRENT, min(MAX_CURRENT, i_m0))
                 i_m1 = max(-MAX_CURRENT, min(MAX_CURRENT, i_m1))
