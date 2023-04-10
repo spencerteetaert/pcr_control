@@ -23,7 +23,7 @@ parameters = {
     }
 }
 
-def main(model_constructor, train_dataloader, val_dataloader, trial_name='', trial_description=''):
+def main(model_constructor, train_dataloader, val_dataloader, weight=None, trial_name='', trial_description=''):
     # Logging setup 
     root = os.path.dirname(os.path.abspath(__file__))
     if trial_name == '':
@@ -56,10 +56,22 @@ def main(model_constructor, train_dataloader, val_dataloader, trial_name='', tri
     writer = SummaryWriter(os.path.join(save_directory, 'training_data'))
 
     # Training objects 
-    loss_fn = torch.nn.MSELoss()
     model = model_constructor(model_params['PREDICTION_HORIZON'], **model_params['MODEL_PARAMS'])
     optimizer = torch.optim.Adam(model.parameters(), lr=training_params['LEARNING_RATE'])
-
+    
+    loss_fn_val = torch.nn.MSELoss()
+    if weight is not None:
+        weight.to(parameters['DEVICE'])
+        loss_fn = torch.nn.MSELoss(reduction="none")
+        
+        def loss_fn_train(pred, labels): 
+            loss = loss_fn(pred, labels)
+            loss = torch.sum(loss, dim=2)
+            loss = torch.mul(loss, weight)
+            loss = torch.mean(loss)
+            return loss
+    else:
+        loss_fn_train = torch.nn.MSELoss()
 
     def train_one_epoch(epoch, tb_writer):
         running_loss = 0 
@@ -69,8 +81,8 @@ def main(model_constructor, train_dataloader, val_dataloader, trial_name='', tri
             optimizer.zero_grad()
 
             pred = model(position_data, feedback_data)
-
             loss = loss_fn(pred, labels)
+
             loss.backward()
             optimizer.step()
 
@@ -95,7 +107,7 @@ def main(model_constructor, train_dataloader, val_dataloader, trial_name='', tri
         for i, vdata in enumerate(val_dataloader):
             (vposition_data, vfeedback_data), vlabels = vdata
             vpred = model(vposition_data, vfeedback_data)
-            vloss = loss_fn(vpred, vlabels)
+            vloss = loss_fn_val(vpred, vlabels)
             running_vloss += vloss.item()
         avg_vloss = running_vloss / (i + 1) 
         
