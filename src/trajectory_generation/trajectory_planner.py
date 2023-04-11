@@ -297,7 +297,7 @@ class TrajectoryPlanner:
 
         self.params = trajector_params
 
-    def gen_trajectory(self, target_pt, dt=0.001, add_noise=False, verbose=True):
+    def gen_trajectory(self, target_pt, dt=0.001, add_noise=False, verbose=False):
         '''
         Given map centered at 0m,0m, a gridscale, and starting/ending points, generates a smooth 
         profile for motor velocities. 
@@ -322,7 +322,7 @@ class TrajectoryPlanner:
             path = astar(costmap, start_pt_px, end_pt_px, noise_map=noise_map, visualize=verbose)
         else:
             path = astar(costmap, start_pt_px, end_pt_px, visualize=verbose)
-        if not len(path):
+        if len(path) < 2:
             print("Trajectory generation failed.")
             return []
         
@@ -349,31 +349,38 @@ class TrajectoryPlanner:
         '''
 
         path = [item / self.model.scale + self.model.costmap_offset_m for item in path]
-        qs = [] # rad
+        # print("PATH", path)
+        dqs = [] # rad
 
         for item in path: 
-            if not self.model.update_end_point(item):
+            if not self.model._update_end_point(item):
                 print("Unable to set link to point", item)
-            qs += [np.array([link.dq for link in self.model.links]).flatten().tolist()]
+            dqs += [[link.dq for link in self.model.sim_links]]
+        dqs = np.array(dqs)
 
-        smoothed_qs = [self.gen_smooth_trajectory(np.array(qs)[:,i], 1/dt, verbose=verbose) for i in range(len(qs[0]))]
+        smoothed_dqs = [self.gen_smooth_trajectory(np.squeeze(dqs[:,i]).tolist(), 1/dt, verbose=verbose) for i in range(len(dqs[0]))]
+        max_len = 0 
+        for item in smoothed_dqs:
+            if len(item) > max_len:
+                max_len = len(item)
+        for item in smoothed_dqs:
+            item += [0 for _ in range(max_len - len(item))]
+        smoothed_dqs = (np.array(smoothed_dqs).T * self.params['i_p_rps']).tolist()
 
-        return smoothed_qs
-
-
-
+        return smoothed_dqs
 
     def gen_smooth_trajectory(self, pos_values, command_freq, verbose = True):
         '''Given a series of relative position commands, generates a Cn smooth trajectory linking each point.
 
         Args: 
-            pos_values (iterable): position values to fit path to 
+            pos_values (iterable): position values to fit path to. These are all relative values
             command_freq (int): frequency for return values to be executed at (hz) 
         
         Returns:
             list of smoothly interpolated values fit to pos_values input to be executed at command_freq
         
         '''
+        # print("pos_values", pos_values)
         START = time.time()
         profiles = []
         profiles += [Profile(0, 0, pos_values[0], self.params, self.C_smoothness)]
@@ -401,10 +408,15 @@ class TrajectoryPlanner:
         profile_output_v = []
         index = 0
         for t in command_times:
-            time.sleep(0.00008) # ERROR: FOR THE LOVE OF GOD WHY???????!?!??!???!?!??!??!? WTF???!??!?!
+            time.sleep(0.00008) # ERROR: FOR THE LOVE OF GOD WHY???????!?!??!???!?!??!??!?
+            # Update: this is because of rt constraints. Python doesn't run parallel when threading and so 
+            # This thread if ran too quickly will block the motor feedback thread to the point of causing 
+            # bus buffer overflow. Proper solution: Use a real programming language. Sleep for now 
             if t > boundaries[index]:
                 index += 1
             profile_output_v += [profiles[index].v(t)]
+
+        # print("LENGTH", len(profile_output_v))
 
         if verbose:
             print(f"Trajectory generation runtime: {time.time() - START}")

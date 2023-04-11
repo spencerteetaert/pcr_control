@@ -24,7 +24,7 @@ class Learned_Controller:
         params = json.load(open(os.path.join('/' + os.path.join(*model_path.split('/')[:-2]), 'parameters.yaml'), 'rb'))
         training_params, model_params = params['TRAINING'], params['MODEL']
         self.FEEDBACK_HORIZON = training_params['FEEDBACK_HORIZON']
-        self.motor_feedback = [0 for _ in range(self.FEEDBACK_HORIZON)]
+        self.motor_feedback = [[0, 0, 0, 0, 0, 0] for _ in range(self.FEEDBACK_HORIZON)]
 
         weights = torch.load(open(model_path, 'rb'), map_location=torch.device('cpu'))
         self.model = PCR_Learned_Model(model_params['PREDICTION_HORIZON'], **model_params['MODEL_PARAMS'])

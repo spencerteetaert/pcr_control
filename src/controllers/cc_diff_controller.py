@@ -66,7 +66,7 @@ class Link:
 
     #endregion
 
-class CC_Model:
+class CC_Diff_Controller:
     def __init__(self, config, Kp = 0.01, real_time=False):
         self.type = "CC_differential_model"
         self.real_time = real_time
@@ -143,7 +143,7 @@ if __name__=='__main__':
 
     config = yaml.safe_load(open(args.config, 'r'))
 
-    controller = CC_Model(config['controller_params'])
+    controller = CC_Diff_Controller(config['controller_params'])
 
     controller.update_goal_point(np.array([0.3, 0.25]))
     controller.update_end_point(np.array([0.25, 0.25]))
