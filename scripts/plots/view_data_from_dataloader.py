@@ -1,5 +1,6 @@
 import time 
 import os 
+import sys 
 import shutil
 import tqdm 
 
@@ -10,7 +11,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import cv2
 
-from dataloaders.ik_dataset import PCRDataSet
+sys.path.append('..')
+from learning.dataloaders.ik_dataset import PCRDataSet
 
 PREDICTION_HORIZON = 20
 FEEDBACK_HORIZON = 20
