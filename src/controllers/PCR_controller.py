@@ -15,6 +15,7 @@ class State(Enum):
     RECOVER = 7 # Robot has moved outside of aurora field of view, attempting to recover without human intervention 
     READY = 8 # Ready to begin data collection 
     HOLDING = 9
+    MANUAL_TRIAL = 10
 
 '''
 PCR Controller Class 
@@ -42,6 +43,9 @@ class PCRController:
         self.controller = controller 
         self.motor_api = motor_api
         self.aurora_api = aurora_api
+
+        assert not (self.controller.__class__.__name__ == "CC_Controller" and not self.motor_api.type == 'vel')
+        assert not (self.controller.__class__.__name__ == "CC_Diff_Controller" and not self.motor_api.type == 'vel')
 
         self.bound_buffer = 10 # rad 
         self.workspace_size = np.array([0.5, 0.5]) # m 
@@ -131,7 +135,14 @@ class PCRController:
             self.ref_i = 0
             self.ref_squence = ref
             self.ref_point = self.ref_squence[self.ref_i]
+            self.ref_i += 1
             self.controller.update_goal_point(self.ref_point)
+        elif mode == 'trial':
+            self.state = State.MANUAL_TRIAL
+            self.controller.update_goal_point(ref)
+            self.ref_point = ref
+            self.traj_start_time = time.time()
+            self.enable_log()
 
 
     def _update_end_point(self, aurora_reading):
@@ -251,6 +262,14 @@ class PCRController:
                 self.disable_log('STALLED')
                 self.state = State.READY
 
+        if self.state == State.MANUAL_TRIAL:
+            if np.linalg.norm(self.end_point - self.ref_point) < 0.02:
+                self.disable_log('SUCCESS')
+                self._start_recovery()
+            elif self.v_end_point < 0.001 and time.time() - self.traj_start_time > 5:
+                self.disable_log('STALLED')
+                self._start_recovery()
+
         if self.state == State.READY and self.generate_random: 
             while True: 
                 pt = np.random.random(2) * self.workspace_size
@@ -270,19 +289,20 @@ class PCRController:
 
         if self.state == State.REFERENCE_TRACKING:
             # Following reference trajectory
-            self.ref_point = self.ref_squence[self.ref_i]
-            self.controller.update_goal_point(self.ref_point)
-            self.ref_i += 1
-            if self.ref_i == len(self.ref_squence):
-                self.ref_squence = []
-                self.ref_i = 0
-                self.state = State.READY
-                self.disable_log("TRACKING_FINISHED")
+            if np.linalg.norm(self.end_point - self.ref_squence[self.ref_i-1]) < 0.02: # have this conditional for position priority. Remove for time priority 
+                self.ref_point = self.ref_squence[self.ref_i]
+                self.controller.update_goal_point(self.ref_point)
+                self.ref_i += 1
+                if self.ref_i == len(self.ref_squence):
+                    self.ref_squence = []
+                    self.ref_i = 0
+                    self.state = State.READY
+                    self.disable_log("TRACKING_FINISHED")
 
         if self.state == State.REFERENCE_STARTING:
             # Moving towards start of reference trajectory 
             if np.linalg.norm(self.end_point - self.ref_squence[0]) < 0.02:
-                self.holdtime = time.time() + 5 
+                self.holdtime = time.time() + 2
                 self.state = State.HOLDING
 
         if self.state == State.HOLDING: 
@@ -297,15 +317,15 @@ class PCRController:
 
         # Sends motor commands, comment to run system without motion 
         # This has no effect on learning based models that do not use PID 
-        self.motor_api.set_ref(self.u)
-        self._log() 
+        # self.motor_api.set_ref(self.u)
+        # self._log() 
 
     def _bound_extension(self, u):
         '''Limits robot to operate on one side of its bending ability
         '''
         print("Pre-bounding", u)
         if self.motor_api.type == 'pos':
-            return [max(0, u[0]), max(0, u[1])]
+            return [min(0, u[0]), min(0, u[1])]
         elif self.motor_api.type == 'vel':
             motor_pos = [self.motor_api.mtr_data.mtr1.position.value, self.motor_api.mtr_data.mtr2.position.value]
             if u[0] > 0:
@@ -322,7 +342,7 @@ class PCRController:
     def _get_ref(self):
         '''Gets setpoint for motor api based on current system state 
         '''
-        if self.state in [State.RANDOM_TRACKING, State.REFERENCE_TRACKING, State.REFERENCE_STARTING, State.MANUAL_TRACKING_TASK]:
+        if self.state in [State.RANDOM_TRACKING, State.REFERENCE_TRACKING, State.REFERENCE_STARTING, State.MANUAL_TRACKING_TASK, State.MANUAL_TRIAL]:
             return self._bound_extension(self.controller.get_command())
         elif self.state == State.MANUAL_TRACKING_JOINT:
             return self.ref_point

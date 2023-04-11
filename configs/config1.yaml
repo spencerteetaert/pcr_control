@@ -5,7 +5,7 @@ controller_params:
       length: 0.85,
       base_point: [-0.171, -0.187],
       exclusion_radius: 0.15,
-      motor_radius: 0.025,
+      motor_radius: 0.01108,
       tendon_radius: 0.011,
       gear_ratio: 64
     },
@@ -13,13 +13,14 @@ controller_params:
       length: 0.85,
       base_point: [0.662, -0.187],
       exclusion_radius: 0.15,
-      motor_radius: 0.025,
+      motor_radius: 0.01108,
       tendon_radius: 0.011,
       gear_ratio: 64
     },
   ]
   bounds: [[0, 0.45], [0, 0.45]]
 trajectory_params: 
-  v_max: 9
+  v_max: 6
   a_max: 25
   d_max: 25
+  i_p_rps: 0.001
