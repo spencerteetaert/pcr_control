@@ -74,8 +74,9 @@ def forceAspect(ax,aspect=1):
     ax.set_aspect(abs((extent[1]-extent[0])/(extent[3]-extent[2]))/aspect)
 
 print(json.dumps(accum, indent=2))
-fig, axs = plt.subplots(1, 3)
-fig.set_size_inches(16, 4)
+fig, axs = plt.subplots(3, 1)
+fig.set_size_inches(4, 16)
+fig.tight_layout(pad=4)
 
 map = axs[0].imshow(dist[::-1,...], norm=LogNorm(vmin=1, vmax=10e6), extent=[i1_min, i1_max, i2_min, i2_max])
 axs[0].set_xlabel('Motor 1 Current [A]')

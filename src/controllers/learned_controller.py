@@ -65,6 +65,7 @@ class Learned_Controller:
         self.goal_point = goal 
         # Configuration = -1 assumes robot has not changed since the last training implementation. 
         # Ideally this parameter is retuned for each trial
+        # TODO: Model runs should be done on end point update, not goal point 
         position_data = torch.Tensor([[self.ee_pos[0], self.ee_pos[1], self.goal_point[0], self.goal_point[1], -1]])
         feedback_data = torch.Tensor([self.motor_feedback])
 

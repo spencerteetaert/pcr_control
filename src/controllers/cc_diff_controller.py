@@ -107,6 +107,7 @@ class CC_Diff_Controller:
         
         self.goal_point_vel = self.Kp * (self.goal_point - self.ee_pos)
         self._gen_A_B()
+        # TODO: Remove unecessary numeric solution. k_dot can be solved in closed form
         self.k_dot = fsolve(self._inverse_kinematics, self.k_dot)
 
         u = []

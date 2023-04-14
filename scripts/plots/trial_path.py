@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 
 # Task space distribution 
-mux = 1 # 0: CC, 1: PID 
-mux1 = 0 # 0: point, 1: traj 
+mux = 0# 0: CC, 1: PID 
+mux1 = 1 # 0: point, 1: traj 
 
 if mux: 
     path = '/home/spencer/Documents/thesis/pcr_control/data/PID_test*/meta_data.txt'
@@ -44,37 +44,30 @@ rmses = [0 for _ in range(5)]
 path_lengths = [0 for _ in range(5)]
 durations = [0 for _ in range(5)]
 
-fig, axs = plt.subplots(1, 5)
+plt.figure(figsize=(10, 7))
 
 if mux: 
-    fig.suptitle("PID Controller")
+    plt.title("PID Controller")
 else:
-    fig.suptitle("Differential CC Controller")
+    plt.title("Differential CC Controller")
 
-# fig.tight_layout()
-fig.set_size_inches(16, 4)
-axs[0].set_xlabel('X position [m]')
-axs[0].set_ylabel('Y position [m]')
-axs[0].set_xlim(0, 0.5)
-axs[0].set_ylim(0, 0.5)
-axs[1].set_xlabel('X position [m]')
-# axs[1].set_ylabel('Y position [m]')
-axs[1].set_xlim(0, 0.5)
-axs[1].set_ylim(0, 0.5)
-axs[2].set_xlabel('X position [m]')
-# axs[2].set_ylabel('Y position [m]')
-axs[2].set_xlim(0, 0.5)
-axs[2].set_ylim(0, 0.5)
-axs[3].set_xlabel('X position [m]')
-# axs[3].set_ylabel('Y position [m]')
-axs[3].set_xlim(0, 0.5)
-axs[3].set_ylim(0, 0.5)
-axs[4].set_xlabel('X position [m]')
-# axs[4].set_ylabel('Y position [m]')
-axs[4].set_xlim(0, 0.5)
-axs[4].set_ylim(0, 0.5)
+plt.tight_layout(pad=2)
+ax0 = plt.subplot(2,3,1)
+ax0.set_ylabel('Y position [m]')
+ax1 = plt.subplot(2,3,2)
+ax2 = plt.subplot(2,3,3)
+ax3 = plt.subplot(2,3,4)
+ax3.set_ylabel('Y position [m]')
+ax4 = plt.subplot(2,3,5)
+
+axs = [ax0, ax1, ax2, ax3, ax4]
 
 for i in range(5):
+    axs[i].set_xlabel('X position [m]')
+    axs[i].set_xlim(0, 0.5)
+    axs[i].set_ylim(0, 0.5)
+    # axs[i].figure.set_figheight(2)
+    axs[i].set_aspect(1)
     axs[i].plot(ref_trajs[i][:,0], ref_trajs[i][:,1], label="Reference Trajectory")
 
 for file in files:
@@ -137,5 +130,5 @@ else:
 
 print(json.dumps(accum, indent=2))
 
-fig.show()
+plt.show()
 input()
