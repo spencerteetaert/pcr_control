@@ -1,0 +1,49 @@
+\section*{List of Symbols}
+\addcontentsline{toc}{subsection}{\protect\numberline{}List of Symbols}
+
+\newenvironment{tableofsymbols}
+  {\par\vspace{\abovedisplayskip}\noindent\begin{tabular}{>{$}l<{$} @{${}={}$} l}}
+  {\end{tabular}\par\vspace{\belowdisplayskip}}
+
+
+\textbf{Abbreviations}
+\begin{tableofsymbols}
+\textit{CR} & Continuum Robot \\
+\textit{TDCR} & Tendon-Driven Continuum Robot \\
+\textit{PCR} & Parallel Continuum Robot \\ 
+\textit{CC} & Constant Curvature (modelling assumption) \\
+\textit{PID} & Position, Integral, and Derivative controller \\
+\textit{RMSE} & Root Mean Squared Error \\
+\textit{OL} & Open Loop (in controls) \\
+\textit{CL} & Closed Loop (in controls) \\
+\textit{DOF} & Degree Of Freedom \\
+\end{tableofsymbols}
+
+
+\noindent\textbf{Math Symbols}
+\begin{tableofsymbols}
+O_{ee} & End effector position [$\in \mathbb{R}^2$] \\
+O_i & Arm base position [$\in \mathbb{R}^2$] \\
+O_{goal} & Goal position [$\in \mathbb{R}^2$] \\
+\ell_{ee, i} & Distance between base point and end effector point \\
+\ell_{goal, i} & Distance between base point and goal point \\
+l_t & Length of a tendon \\ 
+\kappa_i & Arm curvature \\
+\alpha_i & Arm angle \\
+\varphi_i & Arm subtended angle \\
+K_p & Controller proportional gain \\
+K_d & Controller derivative gain \\
+K_i & Controller integral gain \\
+u & Control signal. Typically a position or velocity \\ 
+q & Joint variable. Typically a motor rotation or angular velocity \\ 
+\end{tableofsymbols}
+
+
+\noindent\textbf{Robot Physical Constants}
+\begin{tableofsymbols}
+\ell_i & \SI{80}{cm}, Arm length \\
+\ell_t & \SI{11}{mm}, Distance between the beam and the tendon \\ 
+G & 64, Motor gear ratio \\ 
+r_m & \SI{11}{mm}, Tendon spindle radius \\
+\end{tableofsymbols}
+

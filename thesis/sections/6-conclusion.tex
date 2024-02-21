@@ -1,0 +1,12 @@
+\pagebreak
+\section{Conclusion}
+\label{sec:conclusion}
+
+This thesis lays the foundation for future work in learning-based control for a planar parallel TDCR. A case is made for why learning-based control has a strong application in complex physical systems such as in a planar parallel TDCR. A robot prototype is designed, built, and validated as a research platform. It is open sourced with the intent of enabling easier entry into the field for other researchers while providing a platform that can be used for consistent result comparison. Two baseline controllers are proposed as an initial comparison point on this robot. A dataset is produced with data for learning both control and state estimation on the proposed prototype. All of this constitutes necessary steps towards improving research on learning-based applications for TDCRs, opening the door for future work on the topic.
+
+\subsection{Future Work}
+\subsubsection{State Estimation}
+Both proposed models in this work assumes end effector positional feedback is available to the user. In general, this is not the case and adds the additional requirement of having a motion capture system set up in order to use the robot. This is the largest barrier to reproduce this robot for use in research or other projects. Learning a model that explicitly performs state estimation was deemed outside of the scope of this thesis but is a required component to further improve the usefulness of this model. Demonstrated state estimation for CRs include both non-learning-based methods and learning-based methods \cite{10.3389/frobt.2021.730330}. The proposed dataset enables furthering this research in learning to include state estimation of PCRs. If can also provide a reference set for non-learning-based state estimation pipelines. 
+
+\subsubsection{Learning-Based Control}
+Successful learning-based control was not achieved in this project. Several negative experiment results were shown but none were able to sufficiently control the physical robot. This is the natural continuation of this work. This thesis provides all the necessary foundation to begin this learning-based control research including a robot prototype, a dataset, several baseline models for comparison, and negative result trials to inform future work. Learning-based control for CRs and PCRs remains an underdeveloped area and the hope of this thesis is to provide a foundation for this application. 

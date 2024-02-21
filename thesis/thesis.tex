@@ -1,0 +1,76 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{pgfgantt}
+% \usepackage{hyperref}
+\usepackage[separate-uncertainty=true]{siunitx}
+\usepackage[
+backend=biber,
+style=ieee,
+]{biblatex}
+\addbibresource{biblio.bib} %Import the bibliography file
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage[a4paper, total={5.8in, 8.7in}]{geometry}
+\usepackage{tikz}
+\usepackage[section]{placeins} % Is this needed? 
+\usepackage{array}
+\newenvironment{conditions}
+  {\par\vspace{\abovedisplayskip}\noindent\begin{tabular}{>{$}l<{$} @{${}={}$} l}}
+  {\end{tabular}\par\vspace{\belowdisplayskip}}
+
+\title{Towards Learning-Based Control for a Tendon-Driven Parallel Continuum Robot}
+\author{Spencer Teetaert\\[1cm]{Supervisor: Professor Jessica Burgner-Kahrs}\\{Graduate Student Supervisors: Reinhard Grassmann \& Sven Lilge}}
+\date{April 2023}
+
+\linespread{1.5}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+\tikz[remember picture,overlay] \node[opacity=1,inner sep=0pt] at (current page.center){\includegraphics[width=\paperwidth,height=\paperheight]{images/cover.png}};
+\clearpage
+\pagebreak
+
+\pagenumbering{roman}
+\input{sections/abstract}
+\pagebreak
+\input{sections/acknowledgements}
+\pagebreak  
+\tableofcontents
+\pagebreak
+\input{sections/symbols}
+\pagebreak
+\listoffigures
+\addcontentsline{toc}{subsection}{\protect\numberline{}List of Figures}
+\pagebreak
+\listoftables
+\addcontentsline{toc}{subsection}{\protect\numberline{}List of Tables}
+\pagebreak
+
+\pagenumbering{arabic}
+\input{sections/1-introduction}
+\input{sections/2-background}
+\input{sections/3-methods}
+\input{sections/4-results}
+\input{sections/5-discussion}
+\input{sections/6-conclusion}
+
+\pagebreak
+\printbibliography
+
+\pagebreak
+\appendix
+\input{sections/appendix-learning_trials}
+\pagebreak
+\newpage
+\input{sections/appendix-path_planner} % Path planner 
+\pagebreak
+\newpage
+\
+\newpage
+
+\end{document}

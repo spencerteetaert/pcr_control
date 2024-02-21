@@ -1,0 +1,93 @@
+\section{Deep-Learning Trial Details}
+\label{app:learning}
+
+Trials were run to find optimal values for a series of parameters mentioned in Table \ref{tab:training_parameters}. Each trial was run using the proposed dataset from this work split with 80\% of the data used in training and 20\% used in validation. Each trial began with random weights and had a 10 epoch early stopping. The loss values presented are from the lowest validation loss throughout the training curve. Most trials resulted in no clear advantage. Performance on the robot of the best learning-based model along with the lack of clear benefit from parameter changing in most cases suggests that the models are not actually learning the system dynamics but rather finding a local minima that has no real world value. More work is needed to find solutions that break free of this minima.  
+
+\begin{table}[h]
+    \centering
+    \caption{LSTM layer search}
+    \makebox[\textwidth][c]{\begin{tabular}{p{0.2\linewidth} | p{0.2\linewidth} | p{0.2\linewidth} | p{0.2\linewidth} }
+        \textbf{Backbone Linear Layer(s) Size(s)} & \textbf{Head Linear Layer(s) Size(s)} & \textbf{LSTM Layer Size} & \textbf{Best RMSE Validation Loss (A)} \\
+        \hline
+        10, 10 & 50 & 0 & 0.0942 \\
+        10, 10 & 50 & 5 & 0.0281 \\
+        10, 10 & 50 & 10 & 0.0230 \\
+        10, 10 & 50 & 15 & 0.0220 \\
+        10, 10 & 50 & 20 & 0.0222 \\
+        10, 10 & 50 & 25 & 0.0218 \\
+        10, 10 & 50 & 30 & 0.0229 \\
+        10, 10 & 50 & 35 & 0.0224 \\
+        10, 10 & 50 & 40 & \textbf{0.0212} \\
+    \end{tabular}}
+    \label{tab:arch_lstm}
+\end{table}
+
+
+\begin{table}[h]
+    \centering
+    \caption{Head layer size search}
+    \makebox[\textwidth][c]{\begin{tabular}{p{0.2\linewidth} | p{0.2\linewidth} | p{0.2\linewidth} | p{0.2\linewidth} }
+        \textbf{Backbone Linear Layer(s) Size(s)} & \textbf{Head Linear Layer(s) Size(s)} & \textbf{LSTM Layer Size} & \textbf{Best RMSE Validation Loss (A)} \\
+        \hline
+        10, 10 & 0 & 20 & \textbf{0.0226} \\
+        10, 10 & 25 & 20 & 0.0236 \\
+        10, 10 & 50 & 20 & 0.0236 \\
+    \end{tabular}}
+    \label{tab:arch_head_size}
+\end{table}
+
+\begin{table}[h]
+    \centering
+    \caption{Head layer depth search}
+    \makebox[\textwidth][c]{\begin{tabular}{p{0.2\linewidth} | p{0.2\linewidth} | p{0.2\linewidth} | p{0.2\linewidth} }
+        \textbf{Backbone Linear Layer(s) Size(s)} & \textbf{Head Linear Layer(s) Size(s)} & \textbf{LSTM Layer Size} & \textbf{Best RMSE Validation Loss (A)} \\
+        \hline
+        10, 10 & 0 & 20 & 0.0226 \\
+        10, 10 & 25 & 20 & 0.0236 \\
+        10, 10 & 25, 25 & 20 & \textbf{0.0224} \\
+        10, 10 & 25, 25, 25 & 20 & 0.0233 \\
+        10, 10 & 25, 25, 25, 25 & 20 & 0.0226 \\
+    \end{tabular}}
+    \label{tab:arch_head_depth}
+\end{table}
+
+\begin{table}[h]
+    \centering
+    \caption{Backbone layer size search}
+    \makebox[\textwidth][c]{\begin{tabular}{p{0.2\linewidth} | p{0.2\linewidth} | p{0.2\linewidth} | p{0.2\linewidth} }
+        \textbf{Backbone Linear Layer(s) Size(s)} & \textbf{Head Linear Layer(s) Size(s)} & \textbf{LSTM Layer Size} & \textbf{Best RMSE Validation Loss (A)} \\
+        \hline
+        10 & 25, 25 & 20 & 0.0223 \\
+        20 & 25, 25 & 20 & 0.0211 \\
+        30 & 25, 25 & 20 & \textbf{0.0205} \\
+        \hline
+        10 & 25, 25 & 15 & 0.0234 \\
+        20 & 25, 25 & 15 & 0.0251 \\
+        30 & 25, 25 & 15 & 0.0228 \\
+    \end{tabular}}
+    \label{tab:arch_backbone_size}
+\end{table}
+
+\begin{table}[h]
+    \centering
+    \caption{Backbone layer depth search}
+    \makebox[\textwidth][c]{\begin{tabular}{p{0.2\linewidth} | p{0.2\linewidth} | p{0.2\linewidth} | p{0.2\linewidth} }
+        \textbf{Backbone Linear Layer(s) Size(s)} & \textbf{Head Linear Layer(s) Size(s)} & \textbf{LSTM Layer Size} & \textbf{Best RMSE Validation Loss (A)} \\
+        \hline
+        5 & 25, 25 & 20 & 0.0225 \\
+        5, 5 & 25, 25 & 20 & 0.0241 \\
+        5, 5, 5 & 25, 25 & 20 & 0.0235 \\
+        \hline
+        10 & 25, 25 & 15 & 0.0234 \\
+        10, 10 & 25, 25 & 15 & 0.0243 \\
+        10, 10, 10 & 25, 25 & 15 & 0.0233 \\
+        20 & 25, 25 & 15 & 0.0251 \\
+        20, 20 & 25, 25 & 15 & \textbf{0.0221} \\
+        20, 20, 20 & 25, 25 & 15 & 0.0244 \\
+        30 & 25, 25 & 15 & 0.0228 \\
+        30, 30 & 25, 25 & 15 & 0.0224 \\
+        30, 30, 30 & 25, 25 & 15 & 0.0238 \\
+        
+    \end{tabular}}
+    \label{tab:arch_backbone_depth}
+\end{table}
